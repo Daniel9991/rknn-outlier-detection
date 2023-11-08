@@ -152,9 +152,9 @@ object KDTreeBuilder {
 
     /** Return data type for KDTreeBuilder */
     case class KDTreeData[K, V](
-                                   rootId: NodeId,
-                                   nodes: Dataset[KDNode[K, V]],
-                                   nodesPerLevel: Seq[Long]) {
+       rootId: NodeId,
+       nodes: Dataset[KDNode[K, V]],
+       nodesPerLevel: Seq[Long]) {
 
         /** Store the KDTree data into a Key-Value store */
         def store(store: KVStore[K, V]): Unit = {
