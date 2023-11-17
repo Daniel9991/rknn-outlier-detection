@@ -1,14 +1,9 @@
 package rknn_outlier_detection
 
-import custom_objects.{Instance, KNeighbor, Neighbor}
 import org.apache.spark._
-import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.detection.Techniques
 import rknn_outlier_detection.search.ExhaustiveSearch
-import rknn_outlier_detection.utils.Utils.{readCSV, sortNeighbors}
-import utils.{DistanceFunctions, Utils}
-
-import scala.collection.mutable.ArrayBuffer
+import rknn_outlier_detection.utils.Utils.readCSV
 
 object Main {
 

@@ -5,7 +5,7 @@ package rknn_outlier_detection.detection
 
 object Techniques {
 
-    def normalizeReverseNeighborsCount(count: Int): Double = {
+    private def normalizeReverseNeighborsCount(count: Int): Double = {
         if(count == 0)
             1.0
         else
@@ -20,67 +20,79 @@ object Techniques {
         idsWithRNeighbors.map(tuple => (tuple._1, normalizeReverseNeighborsCount(tuple._2.length)))
     }
 
-    def antihubRefinedFromInstances(instances: RDD[Instance], step: Double, ratio: Double): RDD[(String, Double)] ={
+    def antihubRefinedFromInstances(instances: RDD[Instance], params: AntihubRefinedParams): RDD[(String, Double)] ={
 
+        // Find antihubScores for instances and add them to corresponding instances
         val antihubScores = antihubFromInstances(instances)
+        val keyedInstances = instances.map(instance => (instance.id, instance))
+        val scoredInstances = keyedInstances
+            .join(antihubScores)
+            .map(tuple => {
+                val (_, tuple2) = tuple
+                val (instance, antihubScore) = tuple2
+                instance.antihubScore = antihubScore
+                instance
+            })
 
-        instances.map(instance => ("", 0))
+        var finalScores: RDD[(String, Double)] = findAggregateNeighborsAntihub(scoredInstances)
+
+        var disc = 0.0
+        var i = 0
+        var alpha = params.step * i
+
+        while(alpha <= 1){
+
+            // Join for each instance id, the antihub value and the sum of instance neighbors antihub values
+            val joinedScoreAndAggregatesScoresForInstance = antihubScores.join(finalScores)
+            val newScores = joinedScoreAndAggregatesScoresForInstance.mapValues(tuple => {
+                val (antihubScore, aggregateScore) = tuple
+                (1 - alpha) * antihubScore + alpha * aggregateScore
+            })
+
+            // Find discrimination degree
+            val currentDisc = discScore(newScores.values, params.ratio)
+            if(currentDisc > disc){
+                finalScores = newScores
+                disc = currentDisc
+            }
+
+            i += 1
+            alpha = params.step * i
+        }
+
+        finalScores
     }
 
+    private def discScore(scores: RDD[Double], ratio: Double): Double ={
 
-//    def scoreInstances(
-//                          instances: Array[Instance],
-//                      ): Array[Double] = {
-//
-//        val step = 0.1
-//        val ratio = 0.3
-//
-//        val antihubScores = Antihub.scoreInstances(instances)
-//
-//        val neighborsScoreSum = instances.map(
-//            instance => instance.kNeighbors
-//                .map(neighbor => antihubScores(neighbor.index)).sum
-//        )
-//
-//        var finalScores = antihubScores.clone()
-//        var disc: Double = 0
-//        var i = 0
-//        var alpha = step * i
-//
-//        while(i <= antihubScores.length && alpha <= 1){
-//
-//            val newScores = antihubScores.zip(neighborsScoreSum)
-//                .map(tuple => findRefinedScore(tuple._1, tuple._2, alpha))
-//
-//            val currentDisc = discScore(newScores, ratio)
-//            if(currentDisc > disc){
-//                finalScores = newScores.clone()
-//                disc = currentDisc
-//            }
-//
-//            i += 1
-//            alpha = step * i
-//        }
-//
-//        finalScores
-//    }
-//
-//    def discScore(scores: Array[Double], ratio: Double): Double = {
-//        val scoresCopy = scores.clone()
-//
-//        scoresCopy.sortWith((score1, score2) => score1 < score2)
-//
-//        val np = (scores.length * ratio).toInt
-//
-//        val smallestMembers = scoresCopy.take(np)
-//        val uniqueItems = Set(smallestMembers)
-//
-//        uniqueItems.size.toDouble / np.toDouble
-//    }
-//
-//    def findRefinedScore(
-//                            score: Double,
-//                            neighborsScoreSum: Double,
-//                            alpha: Double
-//                        ): Double = (1 - alpha) * score + alpha * neighborsScoreSum
+        // Why do I need to pass the function for the first argument, when it is just returning the same value
+        val sortedScores = scores.sortBy(score => score)
+
+        val np = (scores.count() * ratio).toInt
+
+        val smallestMembers = sortedScores.takeOrdered(np)
+        val uniqueItems = Set(smallestMembers)
+
+        uniqueItems.size.toDouble / np.toDouble
+    }
+
+    private def findAggregateNeighborsAntihub(instances: RDD[Instance]): RDD[(String, Double)] ={
+
+        val instancesToAntihubScores = instances.map(instance => (instance.id, instance.antihubScore))
+        val neighborsToInstances = instances.flatMap(instance => instance.kNeighbors.map(neighbor => (neighbor.id, instance.id)))
+        val neighborsToGroupedInstances = neighborsToInstances.groupByKey()
+        val neighborsToGroupedInstancesAndScores = neighborsToGroupedInstances
+            .join(instancesToAntihubScores)
+        val instancesToNeighborsScores = neighborsToGroupedInstancesAndScores.flatMap(tuple => {
+            val (_, tuple2) = tuple
+            val (instancesIds, score) = tuple2
+            instancesIds.map(instanceId => (instanceId, score))
+        })
+
+        val instancesIdsToGroupedScores = instancesToNeighborsScores.groupByKey()
+        val instancesIdsToAggregateScore = instancesIdsToGroupedScores
+            .mapValues(scoresInstances => scoresInstances.sum)
+
+        instancesIdsToAggregateScore
+    }
 }
