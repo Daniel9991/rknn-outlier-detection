@@ -1,7 +1,6 @@
 package rknn_outlier_detection.kdtrey5
 
 import coordinates._
-import rknn_outlier_detection.kdtrey5.coordinates.VectorCoordinateSystem.VectorDistance
 import rknn_outlier_detection.kdtrey5.data._
 import skiis2.Skiis
 
@@ -195,7 +194,7 @@ trait KDTree {
               val currentDistance = target |-| p_current
 
               // TODO find a way to omit same node
-              if (currentDistance == VectorDistance(0) || (leafDistances.length == k && !(currentDistance < leafDistances.last))) { /* do nothing */ }
+              if (leafDistances.length == k && !(currentDistance < leafDistances.last)) { /* do nothing */ }
               else{
                 if (leafDistances.length < k)
                   leafDistances.addOne(currentDistance)

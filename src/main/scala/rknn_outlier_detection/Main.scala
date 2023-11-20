@@ -1,7 +1,7 @@
 package rknn_outlier_detection
 
 import org.apache.spark._
-import rknn_outlier_detection.detection.Techniques
+import rknn_outlier_detection.custom_objects.Instance
 import rknn_outlier_detection.search.ExhaustiveSearch
 import rknn_outlier_detection.utils.Utils.readCSV
 
@@ -21,39 +21,9 @@ object Main {
 
         val instances = data.zipWithIndex.map(tuple => {
             val (line, index) = tuple
-            new custom_objects.Instance(index.toString, line.slice(0, 4).map(_.toDouble), line.last)
+            new Instance(index.toString, line.slice(0, 4).map(_.toDouble), line.last)
         })
 
-//        Find kNeighbors
-
-        val x = ExhaustiveSearch.getKNeighbors(instances, k)
-
-//        Find reverse neighbors
-
-        val y = ExhaustiveSearch.getReverseNeighbors(x)
-
-//        Add neighbors and reverse neighbors to instances
-
-        val equippedInstances = instances.map(instance => (instance.id, instance))
-            .join(x)
-            .map(tuple => {
-                val (key, nestedTuple) = tuple
-                val (instance, kNeighbors) = nestedTuple
-                instance.kNeighbors = kNeighbors
-                (key, instance)
-            })
-            .join(y)
-            .map(tuple => {
-                val (key, nestedTuple) = tuple
-                val (instance, rNeighbors) = nestedTuple
-                instance.rNeighbors = rNeighbors
-                instance
-            })
-
-        val antihubValues = Techniques.antihub(y)
-
-        val sortedAntihubValues = antihubValues.sortBy(_._2, ascending = false)
-        val anomalousIds = sortedAntihubValues.take(topN).map(tuple => tuple._1)
-        println(s"Anomalous instances ${anomalousIds.mkString("{", ", ", "}")}")
+        // TODO take reverse neighbors search out of ExhaustiveSearch
     }
 }

@@ -1,29 +1,13 @@
 package rknn_outlier_detection.detection
+import org.apache.spark.rdd.RDD
+import rknn_outlier_detection.custom_objects.Instance
 
-    import org.apache.spark.rdd.RDD
-    import rknn_outlier_detection.custom_objects.{Instance, Neighbor}
+class AntihubRefined(params: AntihubRefinedParams) extends DetectionStrategy {
 
-object Techniques {
-
-    private def normalizeReverseNeighborsCount(count: Int): Double = {
-        if(count == 0)
-            1.0
-        else
-            1.0 / count.toDouble
-    }
-
-    def antihubFromInstances(instances: RDD[Instance]): RDD[(String, Double)] ={
-        instances.map(instance => (instance.id, normalizeReverseNeighborsCount(instance.rNeighbors.length)))
-    }
-
-    def antihub(idsWithRNeighbors: RDD[(String, Array[Neighbor])]): RDD[(String, Double)] ={
-        idsWithRNeighbors.map(tuple => (tuple._1, normalizeReverseNeighborsCount(tuple._2.length)))
-    }
-
-    def antihubRefinedFromInstances(instances: RDD[Instance], params: AntihubRefinedParams): RDD[(String, Double)] ={
+    def antihubRefinedFromInstances(instances: RDD[Instance]): RDD[(String, Double)] ={
 
         // Find antihubScores for instances and add them to corresponding instances
-        val antihubScores = antihubFromInstances(instances)
+        val antihubScores = Antihub.detect(instances)
         val keyedInstances = instances.map(instance => (instance.id, instance))
         val scoredInstances = keyedInstances
             .join(antihubScores)
@@ -66,7 +50,7 @@ object Techniques {
     private def discScore(scores: RDD[Double], ratio: Double): Double ={
 
         // Why do I need to pass the function for the first argument, when it is just returning the same value
-        val sortedScores = scores.sortBy(score => score)
+        val sortedScores = scores.sortBy(identity)
 
         val np = (scores.count() * ratio).toInt
 
@@ -94,5 +78,9 @@ object Techniques {
             .mapValues(scoresInstances => scoresInstances.sum)
 
         instancesIdsToAggregateScore
+    }
+
+    override def detect(instances: RDD[Instance]): RDD[(String, Double)] = {
+        antihubRefinedFromInstances(instances)
     }
 }
