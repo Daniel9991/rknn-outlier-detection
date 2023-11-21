@@ -24,6 +24,8 @@ object Main {
             new Instance(index.toString, line.slice(0, 4).map(_.toDouble), line.last)
         })
 
+        println("hi, mom!")
+
         // TODO take reverse neighbors search out of ExhaustiveSearch
     }
 }
