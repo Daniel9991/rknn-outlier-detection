@@ -3,7 +3,7 @@ package rknn_outlier_detection.search
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.custom_objects.{KNeighbor, Neighbor}
 
-object SearchUtils {
+object ReverseKNNSearch {
     /**
      * Map instances to tuples of (kNeighborId, instanceId) for each kNeighbor
      * that an instance has.
@@ -17,7 +17,6 @@ object SearchUtils {
      *         each instance with its array of reverse neighbors
      */
     def findReverseNeighbors(instancesWithNeighbors: RDD[(String, Array[KNeighbor])]): RDD[(String, Array[Neighbor])]={
-        // TODO What happens with instances that don't have a reverse neighbors???
 
         val neighborReferences = instancesWithNeighbors.flatMap(tuple => {
             val (instanceId, neighbors) = tuple
@@ -29,6 +28,13 @@ object SearchUtils {
                 rNeighbor => new Neighbor(rNeighbor)
             ).toArray)
 
-        y
+        // Dealing with instances that don't have reverse neighbors and don't come
+        // up in y
+        instancesWithNeighbors.leftOuterJoin(y).map(tuple => {
+            val (instanceId, tuple2) = tuple
+            val (_, rNeighbors) = tuple2
+
+            (instanceId, rNeighbors.getOrElse(Array[Neighbor]()))
+        })
     }
 }

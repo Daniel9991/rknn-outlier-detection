@@ -1,14 +1,16 @@
 package rknn_outlier_detection.search
 
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.custom_objects.{Instance, KNeighbor, Neighbor}
-import rknn_outlier_detection.utils.{DistanceFunctions, Utils}
+import rknn_outlier_detection.distance.DistanceFunctions
+import rknn_outlier_detection.utils.Utils
 import rknn_outlier_detection.utils.Utils.sortNeighbors
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.control.Breaks.break
 
-object ExhaustiveSearch extends SearchStrategy {
+object ExhaustiveSearch extends KNNSearchStrategy {
 
     /**
      * Find k neighbors by using the cartesian product to get all
@@ -110,11 +112,7 @@ object ExhaustiveSearch extends SearchStrategy {
         x
     }
 
-    override def findKNeighbors(instances: RDD[Instance], k: Integer): RDD[(String, Array[KNeighbor])] = {
+    override def findKNeighbors(instances: RDD[Instance], k: Integer, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
         findKNeighborsAggregatingPairs(instances, k)
-    }
-
-    override def findReverseNeighbors(instances: RDD[(String, Array[KNeighbor])]): RDD[(String, Array[Neighbor])] = {
-        SearchUtils.findReverseNeighbors(instances)
     }
 }

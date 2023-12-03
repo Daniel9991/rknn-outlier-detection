@@ -1,4 +1,4 @@
-package rknn_outlier_detection.utils
+package rknn_outlier_detection.distance
 
 object DistanceFunctions {
 
