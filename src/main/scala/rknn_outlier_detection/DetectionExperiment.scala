@@ -12,12 +12,12 @@ object DetectionExperiment {
     def main(args: Array[String]): Unit = {
 
 //        val filename = "testingDatasets/creditcardMinMaxScaled.csv"
-        val filename = "datasets/iris.csv"
+        val filename = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\datasets\\iris.csv"
 
 
         val spark:SparkSession = SparkSession
             .builder()
-            .master("spark://192.168.224.170:7077")
+            .master("spark://127.0.0.1:7077")
             .appName("rknn-outlier-detection-cluster")
             .getOrCreate()
 

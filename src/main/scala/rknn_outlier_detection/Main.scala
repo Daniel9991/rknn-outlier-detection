@@ -21,5 +21,6 @@ object Main {
             .appName("myapp")
             .getOrCreate()
 
+        println("Hi, mom!")
     }
 }
