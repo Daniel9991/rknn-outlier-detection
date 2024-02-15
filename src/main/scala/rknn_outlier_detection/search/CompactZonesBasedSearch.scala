@@ -3,12 +3,12 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.custom_objects.{Instance, KNeighbor, Neighbor, Neighborhood}
 import rknn_outlier_detection.distance.DistanceFunctions
-import rknn_outlier_detection.search.PivotBasedSearch.findNeighborhoods
+import rknn_outlier_detection.search.CompactZonesBasedSearch.findNeighborhoods
 import rknn_outlier_detection.utils.Utils
 
 import scala.util.control.Breaks.break
 
-class PivotBasedSearch extends KNNSearchStrategy {
+class CompactZonesBasedSearch extends KNNSearchStrategy {
 
     val PIVOT_SAMPLING_SEED = 384
     val DATASET_FRACTION_FOR_PIVOTS = 0.0001 // 1 pivot per 1000 instances
@@ -67,7 +67,7 @@ class PivotBasedSearch extends KNNSearchStrategy {
     }
 }
 
-object PivotBasedSearch{
+object CompactZonesBasedSearch{
 
     // TODO: Clean/Optimize this up
     def findNeighborhoods(instances: RDD[Instance], pivots: RDD[Instance], sc: SparkContext): RDD[Neighborhood] = {
