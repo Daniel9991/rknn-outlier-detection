@@ -1,24 +1,24 @@
-package rknn_outlier_detection.search
+package rknn_outlier_detection.search.small_data
 
-import rknn_outlier_detection.custom_objects.Instance
+import rknn_outlier_detection.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.distance.DistanceFunctions
 
 import scala.util.Random
 
-class SmallDataLAESA(val pivotsPercentage: Double){
+class LAESA(val pivotsAmount: Integer){
 
     val SEED = 35612345
     val r = new Random(SEED)
 
-    def findPivotsAmount(totalAmount: Int): Int =
-        (totalAmount * pivotsPercentage).toInt
+//    def findPivotsAmount(totalAmount: Int): Int =
+//        (totalAmount * pivotsPercentage).toInt
 
     def findPivots(instances: Array[Instance], pivotsAmount: Int): Array[Instance] =
         r.shuffle(instances.toList).take(pivotsAmount).toArray
 
-    def findAllKNeighbors(instances: Array[Instance]): Array[Instance] ={
+    def findAllKNeighbors(instances: Array[Instance]): Array[KNeighbor] ={
 
-        val pivotsAmount = findPivotsAmount(instances.length)
+        // val pivotsAmount = findPivotsAmount(instances.length)
         val pivots = findPivots(instances, pivotsAmount)
         val distances = pivots.map(pivot => instances.map(instance => DistanceFunctions.euclidean(pivot.attributes, instance.attributes)))
 
@@ -31,7 +31,7 @@ class SmallDataLAESA(val pivotsPercentage: Double){
         instances: Array[Instance],
         pivots: Array[Instance],
         distances: Array[Array[Double]]
-    ): Array[Instance] = {
+    ): Array[KNeighbor] = {
 
         var neighbor: Instance = null
         var radius = Double.PositiveInfinity
@@ -46,14 +46,19 @@ class SmallDataLAESA(val pivotsPercentage: Double){
         // true value according to index
         val analyzedInstances = instances.map(_ => false)
 
+        // TODO: Make pivots be analyzed first so that all instances
+        //  are as approximate as possible (cotas array)
+
         // Mientras haya instancias que no hayan sido analizadas
         while(analyzedInstances.contains(false)){
             val dist = DistanceFunctions.euclidean(s.attributes, query.attributes)
             analyzedInstances(sIndexAsInst) = true
 
             if(dist < radius){
-                neighbor = s
-                radius = dist
+                if(s.id != query.id){
+                    neighbor = s
+                    radius = dist
+                }
             }
 
             var sigB: Instance = null
@@ -80,12 +85,15 @@ class SmallDataLAESA(val pivotsPercentage: Double){
                             if(cotas(i) < gB){
                                 gB = cotas(i)
                                 sigB = u
+                                sIndexAsInst = instances.indexOf(sigB)
+                                sIndexAsPivot = pivots.indexOf(sigB)
                             }
                         }
                         else{
                             if(cotas(i) < g){
                                 g = cotas(i)
                                 sig = u
+                                sIndexAsInst = instances.indexOf(sig)
                             }
                         }
                     }
@@ -100,7 +108,7 @@ class SmallDataLAESA(val pivotsPercentage: Double){
             }
         }
 
-        Array(neighbor)
+        Array(new KNeighbor(neighbor.id, radius))
     }
 
 }
