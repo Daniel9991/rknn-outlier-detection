@@ -18,7 +18,7 @@ class LAESASmallDataTest extends AnyFunSuite {
 
     test("Empty result"){
         val testingData = Array[Instance]()
-        val result = LAESAConfig.findAllKNeighbors(testingData)
+        val result = LAESAConfig.findAllKNeighbors(testingData, 3)
         assert(result.isEmpty)
     }
 
@@ -32,27 +32,26 @@ class LAESASmallDataTest extends AnyFunSuite {
         val k = 3
         val testingData = Array(i1, i2, i3, i4, i5)
 
-        val kNeighbors = LAESAConfig.findAllKNeighbors(testingData)
+        val kNeighbors = LAESAConfig.findAllKNeighbors(testingData, k)
 
         // instance 1
-        println(s"Neighbor of instance 1: ${kNeighbors(0).id}, ${kNeighbors(0).distance}")
-        assert(kNeighbors(0).id == "2" || kNeighbors(0).id == "3")
+//        println(kNeighbors.map(neighbors => neighbors.map(n => if(n != null)  n.id else null).mkString("[", ", ", "]")).mkString("[\n\t", "\n\t", "\n]"))
+        assert(arraysContainSameIds(kNeighbors(0).map(_.id), Array("2", "3", "4")))
 
         // instance 2
-        println(s"Neighbor of instance 2: ${kNeighbors(1).id}, ${kNeighbors(1).distance}")
-        assert(kNeighbors(1).id == "1" || kNeighbors(1).id == "3")
+        assert(arraysContainSameIds(kNeighbors(1).map(_.id), Array("1", "3", "4")))
 
         // instance 3
-        println(s"Neighbor of instance 3: ${kNeighbors(2).id}, ${kNeighbors(2).distance}")
-        assert(kNeighbors(2).id == "2" || kNeighbors(2).id == "4")
+        assert(
+            arraysContainSameIds(kNeighbors(2).map(_.id), Array("2", "4", "1")) ||
+            arraysContainSameIds(kNeighbors(2).map(_.id), Array("2", "4", "5"))
+        )
 
         // instance 4
-        println(s"Neighbor of instance 4: ${kNeighbors(3).id}, ${kNeighbors(3).distance}")
-        assert(kNeighbors(3).id == "3" || kNeighbors(3).id == "5")
+        assert(arraysContainSameIds(kNeighbors(3).map(_.id), Array("2", "3", "5")))
 
         // instance 5
-        println(s"Neighbor of instance 5: ${kNeighbors(4).id}, ${kNeighbors(4).distance}")
-        assert(kNeighbors(4).id == "4")
+        assert(arraysContainSameIds(kNeighbors(4).map(_.id), Array("2", "3", "4")))
     }
 
 //    test("One instance doesn't have rnn"){
