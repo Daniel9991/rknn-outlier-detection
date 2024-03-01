@@ -3,6 +3,7 @@ package rknn_outlier_detection.search.small_data
 import org.scalatest.funsuite.AnyFunSuite
 import rknn_outlier_detection.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.distance.DistanceFunctions
+import rknn_outlier_detection.utils.ReaderWriter
 
 class LAESASmallDataTest extends AnyFunSuite {
 
@@ -28,7 +29,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     // if k <= 0 or k >= n
     // }
 
-    test("General knn"){
+    test("(Dummy) General knn"){
         val k = 3
         val testingData = Array(i1, i2, i3, i4, i5)
 
@@ -54,24 +55,28 @@ class LAESASmallDataTest extends AnyFunSuite {
         assert(arraysContainSameIds(kNeighbors(4).map(_.id), Array("2", "3", "4")))
     }
 
-//    test("One instance doesn't have rnn"){
-//        val k = 2
-//        val testingData = Array(i1, i6, i2, i7)
-//
-//        val (_, rNeighbors) = ExhaustiveNeighbors.findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
-//
-//        // instance1
-//        assert(rNeighbors(0).isEmpty)
-//
-//        // instance6
-//        assert(arraysContainSameIds(rNeighbors(1).map(_.id), Array("1", "2", "7")))
-//
-//        // instance2
-//        assert(arraysContainSameIds(rNeighbors(2).map(_.id), Array("1", "6", "7")))
-//
-//        // instance7
-//        assert(arraysContainSameIds(rNeighbors(3).map(_.id), Array("6", "2")))
-//    }
+    test("(Iris) General knn and rknn"){
+        val k = 10
+
+        // Read rows from csv file and convert them to Instance objects
+        val rawData = ReaderWriter.readCSV("datasets/iris.csv", hasHeader=false)
+        val baseInstances = rawData.zipWithIndex.map(tuple => {
+            val (line, index) = tuple
+            val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+            new Instance(index.toString, attributes, classification="")
+        })
+
+        // Getting kNeighbors from ExhaustiveSearch small data
+        val (exhaustiveKNeighbors, _) = ExhaustiveNeighbors.findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k)
+
+        val mixedExhaustiveAndLAESAKNeighbors = exhaustiveKNeighbors.zip(laesaKNeighbors)
+
+        assert(mixedExhaustiveAndLAESAKNeighbors.forall(tuple => {
+            val (exhaustive, laesa) = tuple
+            arraysContainSameNeighbors(exhaustive, laesa)
+        }))
+    }
 
     def arraysContainSameNeighbors(arr1: Array[KNeighbor], arr2: Array[KNeighbor]): Boolean = {
         if(arr1.length != arr2.length) return false
