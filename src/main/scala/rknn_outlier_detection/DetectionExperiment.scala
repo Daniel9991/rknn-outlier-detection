@@ -12,7 +12,7 @@ object DetectionExperiment {
     def main(args: Array[String]): Unit = {
 
 //        val filename = "testingDatasets/creditcardMinMaxScaled.csv"
-        val filename = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\datasets\\iris.csv"
+        val filename = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\datasets\\iris-synthetic.csv"
 
 
         val spark:SparkSession = SparkSession

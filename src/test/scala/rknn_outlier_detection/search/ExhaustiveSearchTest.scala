@@ -3,6 +3,9 @@ package rknn_outlier_detection.search
 import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.funsuite.AnyFunSuite
 import rknn_outlier_detection.custom_objects.{Instance, KNeighbor}
+import rknn_outlier_detection.distance.DistanceFunctions
+import rknn_outlier_detection.search.small_data.ExhaustiveNeighbors
+import rknn_outlier_detection.utils.ReaderWriter
 
 class ExhaustiveSearchTest extends AnyFunSuite {
 
@@ -60,7 +63,7 @@ class ExhaustiveSearchTest extends AnyFunSuite {
         // if k <= 0 or k >= n
     }
 
-    test("General knn and rknn"){
+    test("(Dummy) General knn and rknn"){
         val k = 3
         val testingData = sc.parallelize(Seq(i1, i2, i3, i4, i5))
 
@@ -105,7 +108,7 @@ class ExhaustiveSearchTest extends AnyFunSuite {
         )
     }
 
-    test("One instance doesn't have rnn"){
+    test("(Dummy) One instance doesn't have rnn"){
         val k = 2
         val testingData = sc.parallelize(Seq(i1, i6, i2, i7))
 
@@ -127,5 +130,49 @@ class ExhaustiveSearchTest extends AnyFunSuite {
 
         // instance7
         assert(arraysContainSameIds(sortedRNeighbors(3)._2.map(_.id), Array("6", "2")))
+    }
+
+    test("(Iris) General knn and rknn"){
+        val k = 10
+
+        // Read rows from csv file and convert them to Instance objects
+        val rawData = ReaderWriter.readCSV("datasets/iris.csv", hasHeader=false)
+        val baseInstances = rawData.zipWithIndex.map(tuple => {
+            val (line, index) = tuple
+            val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+            new Instance(index.toString, attributes, classification="")
+        })
+
+        // Getting kNeighbors from ExhaustiveSearch small data
+        val (smallKNeighbors, smallRNeighbors) = ExhaustiveNeighbors.findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+
+        // Getting kNeighbors from ExhaustiveSearch big data
+        val rdd = sc.parallelize(baseInstances.toSeq)
+        val kNeighborsRDD = searchStrategy.findKNeighbors(rdd, k, sc)
+        val bigKNeighbors = kNeighborsRDD
+            .collect()
+            .map(tuple => (tuple._1.toInt, tuple._2))
+            .sortWith((t1, t2) => t1._1 < t2._1)
+            .map(_._2)
+        val bigRNeighbors = ReverseKNNSearch.findReverseNeighbors(kNeighborsRDD)
+            .collect()
+            .map(tuple => (tuple._1.toInt, tuple._2))
+            .sortWith((t1, t2) => t1._1 < t2._1)
+            .map(_._2)
+
+        val mixedSmallAndBigKNeighbors = smallKNeighbors.zip(bigKNeighbors)
+
+        assert(mixedSmallAndBigKNeighbors.forall(tuple => {
+            val (small, big) = tuple
+            arraysContainSameNeighbors(small, big)
+        }))
+
+        val mixedSmallAndBigRNeighbors = smallRNeighbors.zip(bigRNeighbors)
+
+        assert(mixedSmallAndBigRNeighbors.forall(tuple => {
+            val (small, big) = tuple
+
+            (small.isEmpty && big.isEmpty) || arraysContainSameIds(small.map(_.id), big.map(_.id))
+        }))
     }
 }

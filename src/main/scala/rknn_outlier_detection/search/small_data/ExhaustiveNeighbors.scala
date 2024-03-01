@@ -15,11 +15,8 @@ object ExhaustiveNeighbors {
 
     val kNeighbors = instances.map(
       query => {
-        val others = instances.zipWithIndex
-          .filter(tuple => !tuple._1.attributes.sameElements(query.attributes))
-        val otherInstances = others.map(tuple => tuple._1)
-        val otherIndices = others.map(tuple => tuple._2)
-        findQueryKNeighbors(query, otherInstances, otherIndices, k, distanceFunction)
+        val otherInstances = instances.filter(instance => instance.id != query.id)
+        findQueryKNeighbors(query, otherInstances, k, distanceFunction)
       }
     )
 
@@ -50,11 +47,8 @@ object ExhaustiveNeighbors {
 
     val kNeighbors = instances.map(
       query => {
-        val others = instances.zipWithIndex
-          .filter(tuple => !tuple._1.attributes.sameElements(query.attributes))
-        val otherInstances = others.map(tuple => tuple._1)
-        val otherIndices = others.map(tuple => tuple._2)
-        findQueryKNeighbors(query, otherInstances, otherIndices, k, distanceFunction)
+        val otherInstances = instances.filter(instance => instance.id != query.id)
+        findQueryKNeighbors(query, otherInstances, k, distanceFunction)
       }
     )
 
@@ -64,7 +58,6 @@ object ExhaustiveNeighbors {
   def findQueryKNeighbors(
     query: Instance,
     dataset: Array[Instance],
-    indices: Array[Int],
     k: Int,
     distanceFunction: (Array[Double], Array[Double]) => Double
   ): Array[KNeighbor] = {
@@ -72,10 +65,8 @@ object ExhaustiveNeighbors {
     var kNeighbors = new ArrayBuffer[KNeighbor]()
 
     val (firstKInstances, remainingInstances) = dataset.splitAt(k)
-    val (firstKIndices, remainingIndices) = indices.splitAt(k)
 
-    firstKInstances.zip(firstKIndices).foreach(tuple => {
-      val (instance, index) = tuple
+    firstKInstances.foreach(instance => {
       val distance = distanceFunction(query.attributes, instance.attributes)
 
       kNeighbors += new KNeighbor(instance.id, distance)
@@ -85,8 +76,7 @@ object ExhaustiveNeighbors {
       neighbor1.distance < neighbor2.distance
     )
 
-    remainingInstances.zip(remainingIndices).foreach(tuple => {
-      val (instance, index) = tuple
+    remainingInstances.foreach(instance => {
       val distance = DistanceFunctions.euclidean(query.attributes, instance.attributes)
 
       if (kNeighbors.last.distance > distance) {
