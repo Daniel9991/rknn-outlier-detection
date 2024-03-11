@@ -22,7 +22,7 @@ object ExhaustiveSearch extends KNNSearchStrategy {
      * the k closest instances
      *
      * Costly as it produces lots of pairs (n squared).
-     * Sorts n arrays of size n-1 to get k neighbors (n being instances length)
+     * Sorts n arrays of size n-1 to get k neighbors (n being instances.length)
      *
      * @param instances Collection of instances to process
      * @param k Amount of neighbors for each instance
@@ -112,7 +112,7 @@ object ExhaustiveSearch extends KNNSearchStrategy {
         x
     }
 
-    override def findKNeighbors(instances: RDD[Instance], k: Integer, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+    override def findKNeighbors(instances: RDD[Instance], k: Int, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
         findKNeighborsAggregatingPairs(instances, k)
     }
 }

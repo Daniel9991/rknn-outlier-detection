@@ -44,4 +44,43 @@ object Utils {
 
         neighbors
     }
+
+    /**
+     * Add a new KNeighbor to an array.
+     * If the array contains empty spots i.e. there is a position that
+     * contains null, find the index of the position and insert the neighbor there.
+     * If the array is full, insert neighbor in the last position.
+     *
+     * After insertion, have new neighbor work its way down from the insertion
+     * position as necessary comparing itself with the neighbor below (or ot its left).
+     *
+     * @param kNeighbors Array of KNeighbors that can contain null spots. Expected to be sorted
+     * @param newNeighbor KNeighbor to insert in array
+     * @return Unit - The array is modified in place
+     */
+    def addNewNeighbor(
+                          kNeighbors: Array[KNeighbor],
+                          newNeighbor: KNeighbor
+                      ): Unit = {
+
+        var currentIndex: Int = 0
+
+        // If array contains null, insert in first null position
+        if(kNeighbors.contains(null)){
+            currentIndex = kNeighbors.indexOf(null)
+            kNeighbors(currentIndex) = newNeighbor
+        }
+        // If array is full, insert in last position
+        else {
+            currentIndex = kNeighbors.length - 1
+            kNeighbors(currentIndex) = newNeighbor
+        }
+
+        while (newNeighbor != kNeighbors.head &&
+            newNeighbor.distance < kNeighbors(currentIndex - 1).distance) {
+            kNeighbors(currentIndex) = kNeighbors(currentIndex - 1)
+            currentIndex -= 1
+            kNeighbors(currentIndex) = newNeighbor
+        }
+    }
 }

@@ -13,7 +13,7 @@ class CompactZonesBasedSearch extends KNNSearchStrategy {
     val PIVOT_SAMPLING_SEED = 384
     val DATASET_FRACTION_FOR_PIVOTS = 0.0001 // 1 pivot per 1000 instances
 
-    override def findKNeighbors(instances: RDD[Instance], k: Integer, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+    override def findKNeighbors(instances: RDD[Instance], k: Int, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
 
         // TODO: Clean/Optimize this up
 
