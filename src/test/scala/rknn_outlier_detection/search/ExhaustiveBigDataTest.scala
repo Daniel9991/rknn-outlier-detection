@@ -7,7 +7,7 @@ import rknn_outlier_detection.distance.DistanceFunctions
 import rknn_outlier_detection.search.small_data.ExhaustiveSmallData
 import rknn_outlier_detection.utils.ReaderWriter
 
-class LAESATest extends AnyFunSuite {
+class ExhaustiveBigDataTest extends AnyFunSuite {
 
     def arraysContainSameNeighbors(arr1: Array[KNeighbor], arr2: Array[KNeighbor]): Boolean = {
         if(arr1.length != arr2.length) return false
@@ -41,7 +41,7 @@ class LAESATest extends AnyFunSuite {
     }
 
     val sc = new SparkContext(new SparkConf().setMaster("local").setAppName("Sparking2"))
-    val searchStrategy = new LAESA(3)
+    val searchStrategy: ExhaustiveBigData.type = ExhaustiveBigData
 
     val i1 = new Instance("1", Array(1.0, 1.0), "")
     val i2 = new Instance("2", Array(2.0, 2.0), "")
@@ -63,35 +63,73 @@ class LAESATest extends AnyFunSuite {
         // if k <= 0 or k >= n
     }
 
-    test("General knn and rknn"){
+    test("(Dummy) General knn and rknn"){
         val k = 3
         val testingData = sc.parallelize(Seq(i1, i2, i3, i4, i5))
 
         val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, sc)
         val kNeighbors = kNeighborsRDD.collect()
 
+        val rNeighborsRDD = ReverseKNNSearch.findReverseNeighbors(kNeighborsRDD)
+        val rNeighbors = rNeighborsRDD.collect()
+
         assert(kNeighbors.forall(pair => pair._2.length == k))
 
-        println(kNeighbors.map(t => s"${t._1}:\n\t${t._2.map(n => s"${n.id}: ${n.distance}").mkString(",\n\t")}").mkString("\n\n"))
         val sortedKNeighbors = kNeighbors.sortWith((a, b) => a._1 < b._1)
+        val sortedRNeighbors = rNeighbors.sortWith((a, b) => a._1 < b._1)
 
         // instance1
         assert(arraysContainSameIds(sortedKNeighbors(0)._2.map(_.id), Array("2", "3", "4")))
+        assert(sortedRNeighbors(0)._2.map(_.id).contains("2"))
 
         // instance2
         assert(arraysContainSameIds(sortedKNeighbors(1)._2.map(_.id), Array("1", "3", "4")))
+        assert(arraysContainSameIds(sortedRNeighbors(1)._2.map(_.id), Array("1", "3", "4", "5")))
 
         // instance3
         assert(
             arraysContainSameIds(sortedKNeighbors(2)._2.map(_.id), Array("2", "4", "1")) ||
                 arraysContainSameIds(sortedKNeighbors(2)._2.map(_.id), Array("2", "4", "5"))
         )
+        assert(arraysContainSameIds(sortedRNeighbors(2)._2.map(_.id), Array("1", "2", "4", "5")))
 
         // instance4
         assert(arraysContainSameIds(sortedKNeighbors(3)._2.map(_.id), Array("2", "3", "5")))
+        assert(arraysContainSameIds(sortedRNeighbors(3)._2.map(_.id), Array("1", "2", "3", "5")))
 
         // instance5
         assert(arraysContainSameIds(sortedKNeighbors(4)._2.map(_.id), Array("2", "3", "4")))
+        assert(sortedRNeighbors(4)._2.map(_.id).contains("4"))
+
+        // instance1 or instance5 got instance3 as reverseNeighbors
+        assert(
+            (sortedRNeighbors(0)._2.length == 1  && sortedRNeighbors(4)._2.length == 2 && sortedRNeighbors(4)._2.map(_.id).contains("3")) ||
+            (sortedRNeighbors(0)._2.length == 2  && sortedRNeighbors(4)._2.length == 1 && sortedRNeighbors(0)._2.map(_.id).contains("3"))
+        )
+    }
+
+    test("(Dummy) One instance doesn't have rnn"){
+        val k = 2
+        val testingData = sc.parallelize(Seq(i1, i6, i2, i7))
+
+        val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, sc)
+
+        val rNeighborsRDD = ReverseKNNSearch.findReverseNeighbors(kNeighborsRDD)
+        val rNeighbors = rNeighborsRDD.collect()
+
+        val sortedRNeighbors = rNeighbors.sortWith((a, b) => a._1 < b._1)
+
+        // instance1
+        assert(sortedRNeighbors(0)._2.isEmpty)
+
+        // instance2
+        assert(arraysContainSameIds(sortedRNeighbors(1)._2.map(_.id), Array("6", "7", "1")))
+
+        // instance6
+        assert(arraysContainSameIds(sortedRNeighbors(2)._2.map(_.id), Array("2", "7", "1")))
+
+        // instance7
+        assert(arraysContainSameIds(sortedRNeighbors(3)._2.map(_.id), Array("6", "2")))
     }
 
     test("(Iris) General knn and rknn"){
@@ -106,7 +144,7 @@ class LAESATest extends AnyFunSuite {
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val (smallKNeighbors, _) = ExhaustiveSmallData.findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val (smallKNeighbors, smallRNeighbors) = ExhaustiveSmallData.findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
 
         // Getting kNeighbors from ExhaustiveSearch big data
         val rdd = sc.parallelize(baseInstances.toSeq)
@@ -116,13 +154,25 @@ class LAESATest extends AnyFunSuite {
             .map(tuple => (tuple._1.toInt, tuple._2))
             .sortWith((t1, t2) => t1._1 < t2._1)
             .map(_._2)
+        val bigRNeighbors = ReverseKNNSearch.findReverseNeighbors(kNeighborsRDD)
+            .collect()
+            .map(tuple => (tuple._1.toInt, tuple._2))
+            .sortWith((t1, t2) => t1._1 < t2._1)
+            .map(_._2)
 
         val mixedSmallAndBigKNeighbors = smallKNeighbors.zip(bigKNeighbors)
 
-        assert(smallKNeighbors.length == bigKNeighbors.length)
         assert(mixedSmallAndBigKNeighbors.forall(tuple => {
             val (small, big) = tuple
             arraysContainSameNeighbors(small, big)
+        }))
+
+        val mixedSmallAndBigRNeighbors = smallRNeighbors.zip(bigRNeighbors)
+
+        assert(mixedSmallAndBigRNeighbors.forall(tuple => {
+            val (small, big) = tuple
+
+            (small.isEmpty && big.isEmpty) || arraysContainSameIds(small.map(_.id), big.map(_.id))
         }))
     }
 }

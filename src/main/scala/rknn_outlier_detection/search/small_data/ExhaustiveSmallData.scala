@@ -2,10 +2,11 @@ package rknn_outlier_detection.search.small_data
 
 import rknn_outlier_detection.custom_objects.{Instance, KNeighbor, Neighbor}
 import rknn_outlier_detection.distance.DistanceFunctions
+import rknn_outlier_detection.utils.Utils
 
 import scala.collection.mutable.ArrayBuffer
 
-object ExhaustiveNeighbors {
+object ExhaustiveSmallData {
 
   def findAllNeighbors(
     instances: Array[Instance],
@@ -13,12 +14,7 @@ object ExhaustiveNeighbors {
     distanceFunction: (Array[Double], Array[Double]) => Double
   ): (Array[Array[KNeighbor]], Array[Array[Neighbor]]) = {
 
-    val kNeighbors = instances.map(
-      query => {
-        val otherInstances = instances.filter(instance => instance.id != query.id)
-        findQueryKNeighbors(query, otherInstances, k, distanceFunction)
-      }
-    )
+    val kNeighbors = findKNeighbors(instances, k, distanceFunction)
 
     val instancesWithKNeighbors = instances.zip(kNeighbors).map(tuple => {
       val (instance, kNeighborsBatch) = tuple
@@ -45,12 +41,7 @@ object ExhaustiveNeighbors {
     distanceFunction: (Array[Double], Array[Double]) => Double
  ): Array[Array[KNeighbor]] = {
 
-    val kNeighbors = instances.map(
-      query => {
-        val otherInstances = instances.filter(instance => instance.id != query.id)
-        findQueryKNeighbors(query, otherInstances, k, distanceFunction)
-      }
-    )
+    val kNeighbors = instances.map(query => findQueryKNeighbors(query, instances, k, distanceFunction))
 
     kNeighbors
   }
@@ -62,31 +53,19 @@ object ExhaustiveNeighbors {
     distanceFunction: (Array[Double], Array[Double]) => Double
   ): Array[KNeighbor] = {
 
-    var kNeighbors = new ArrayBuffer[KNeighbor]()
+    val kNeighbors = Array.fill[KNeighbor](k)(null)
 
-    val (firstKInstances, remainingInstances) = dataset.splitAt(k)
+    dataset.foreach(instance => {
+        if(instance.id != query.id){
+            val distance = distanceFunction(query.attributes, instance.attributes)
 
-    firstKInstances.foreach(instance => {
-      val distance = distanceFunction(query.attributes, instance.attributes)
-
-      kNeighbors += new KNeighbor(instance.id, distance)
+            if(kNeighbors.contains(null) || kNeighbors.last.distance > distance){
+                Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distance))
+            }
+        }
     })
 
-    kNeighbors = kNeighbors.sortWith((neighbor1, neighbor2) =>
-      neighbor1.distance < neighbor2.distance
-    )
-
-    remainingInstances.foreach(instance => {
-      val distance = DistanceFunctions.euclidean(query.attributes, instance.attributes)
-
-      if (kNeighbors.last.distance > distance) {
-
-        val neighbor = new KNeighbor(instance.id, distance)
-        insertNeighbor(kNeighbors, neighbor)
-      }
-    })
-
-    kNeighbors.toArray
+    kNeighbors
   }
 
   def insertNeighbor(

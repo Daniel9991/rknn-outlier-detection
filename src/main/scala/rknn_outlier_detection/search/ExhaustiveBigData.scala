@@ -10,7 +10,7 @@ import rknn_outlier_detection.utils.Utils.sortNeighbors
 import scala.collection.mutable.ArrayBuffer
 import scala.util.control.Breaks.break
 
-object ExhaustiveSearch extends KNNSearchStrategy {
+object ExhaustiveBigData extends KNNSearchStrategy {
 
     /**
      * Find k neighbors by using the cartesian product to get all

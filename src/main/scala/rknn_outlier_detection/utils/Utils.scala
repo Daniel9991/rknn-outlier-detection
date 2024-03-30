@@ -59,9 +59,9 @@ object Utils {
      * @return Unit - The array is modified in place
      */
     def addNewNeighbor(
-                          kNeighbors: Array[KNeighbor],
-                          newNeighbor: KNeighbor
-                      ): Unit = {
+        kNeighbors: Array[KNeighbor],
+        newNeighbor: KNeighbor
+    ): Unit = {
 
         var currentIndex: Int = 0
 
@@ -76,8 +76,10 @@ object Utils {
             kNeighbors(currentIndex) = newNeighbor
         }
 
-        while (newNeighbor != kNeighbors.head &&
-            newNeighbor.distance < kNeighbors(currentIndex - 1).distance) {
+        while (
+            newNeighbor != kNeighbors.head &&
+            newNeighbor.distance < kNeighbors(currentIndex - 1).distance
+        ) {
             kNeighbors(currentIndex) = kNeighbors(currentIndex - 1)
             currentIndex -= 1
             kNeighbors(currentIndex) = newNeighbor

@@ -5,7 +5,7 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.classification.ClassificationStrategy
 import rknn_outlier_detection.custom_objects.Instance
 import rknn_outlier_detection.detection.DetectionStrategy
-import rknn_outlier_detection.search.{ExhaustiveSearch, KNNSearchStrategy, ReverseKNNSearch}
+import rknn_outlier_detection.search.{ExhaustiveBigData, KNNSearchStrategy, ReverseKNNSearch}
 
 class Detector(
                   val searchStrategy: KNNSearchStrategy,

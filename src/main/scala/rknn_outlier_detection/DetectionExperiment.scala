@@ -4,7 +4,7 @@ import org.apache.spark.sql.SparkSession
 import rknn_outlier_detection.classification.TopN
 import rknn_outlier_detection.custom_objects.Instance
 import rknn_outlier_detection.detection.{AntihubRefined, AntihubRefinedParams}
-import rknn_outlier_detection.search.ExhaustiveSearch
+import rknn_outlier_detection.search.ExhaustiveBigData
 import rknn_outlier_detection.utils.ReaderWriter
 
 object DetectionExperiment {
@@ -28,7 +28,7 @@ object DetectionExperiment {
             new Instance(index.toString, attributes, classification="")
         })
 
-        val neighbors = ExhaustiveSearch.findKNeighbors(
+        val neighbors = ExhaustiveBigData.findKNeighbors(
             spark.sparkContext.parallelize(instances),
             20,
             spark.sparkContext

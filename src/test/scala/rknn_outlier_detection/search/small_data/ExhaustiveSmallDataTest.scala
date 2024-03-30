@@ -16,7 +16,7 @@ class ExhaustiveSmallDataTest extends AnyFunSuite {
 
     test("Empty RDD"){
         val testingData = Array[Instance]()
-        val result = ExhaustiveNeighbors.findKNeighbors(testingData, 1, DistanceFunctions.euclidean)
+        val result = ExhaustiveSmallData.findKNeighbors(testingData, 1, DistanceFunctions.euclidean)
         assert(result.isEmpty)
     }
 
@@ -30,7 +30,7 @@ class ExhaustiveSmallDataTest extends AnyFunSuite {
         val k = 3
         val testingData = Array(i1, i2, i3, i4, i5)
 
-        val (kNeighbors, rNeighbors) = ExhaustiveNeighbors.findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
+        val (kNeighbors, rNeighbors) = ExhaustiveSmallData.findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
 
         assert(kNeighbors.forall(neighbor => neighbor.length == k))
 
@@ -69,7 +69,7 @@ class ExhaustiveSmallDataTest extends AnyFunSuite {
         val k = 2
         val testingData = Array(i1, i6, i2, i7)
 
-        val (_, rNeighbors) = ExhaustiveNeighbors.findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
+        val (_, rNeighbors) = ExhaustiveSmallData.findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
 
         // instance1
         assert(rNeighbors(0).isEmpty)
