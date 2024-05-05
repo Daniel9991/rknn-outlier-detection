@@ -3,9 +3,9 @@ package rknn_outlier_detection
 import org.apache.spark.ml.feature.{MaxAbsScaler, MinMaxScaler}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructField, StructType}
-import rknn_outlier_detection.utils.ReaderWriter
-import rknn_outlier_detection.utils.Utils.readCSV
+import rknn_outlier_detection.shared.utils.Utils.readCSV
 import org.apache.spark.ml.linalg.Vectors
+import rknn_outlier_detection.shared.utils.ReaderWriter
 
 object Preprocessing {
 

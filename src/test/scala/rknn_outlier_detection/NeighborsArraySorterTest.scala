@@ -1,8 +1,8 @@
 package rknn_outlier_detection
 
 import org.scalatest.funsuite.AnyFunSuite
-import rknn_outlier_detection.custom_objects.KNeighbor
-import rknn_outlier_detection.utils.Utils
+import rknn_outlier_detection.shared.custom_objects.KNeighbor
+import rknn_outlier_detection.shared.utils.Utils
 
 class NeighborsArraySorterTest extends AnyFunSuite {
 

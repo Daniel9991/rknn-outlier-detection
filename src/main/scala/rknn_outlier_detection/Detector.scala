@@ -2,10 +2,12 @@ package rknn_outlier_detection
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import rknn_outlier_detection.classification.ClassificationStrategy
-import rknn_outlier_detection.custom_objects.Instance
-import rknn_outlier_detection.detection.DetectionStrategy
-import rknn_outlier_detection.search.{ExhaustiveBigData, KNNSearchStrategy, ReverseKNNSearch}
+import rknn_outlier_detection.big_data.classification.ClassificationStrategy
+import rknn_outlier_detection.shared.custom_objects.Instance
+import rknn_outlier_detection.big_data.detection.DetectionStrategy
+import rknn_outlier_detection.big_data.search.reverse_knn.ReverseKNNSearch
+import rknn_outlier_detection.big_data.search.KNNSearchStrategy
+import rknn_outlier_detection.shared.distance.DistanceFunctions
 
 class Detector(
                   val searchStrategy: KNNSearchStrategy,
@@ -20,7 +22,7 @@ class Detector(
 
         // Find kNeighbors
 
-        val x = searchStrategy.findKNeighbors(instances, k, sc)
+        val x = searchStrategy.findKNeighbors(instances, k, DistanceFunctions.euclidean, sc)
 
         // Find reverse neighbors
 
