@@ -4,6 +4,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
+import rknn_outlier_detection.exceptions.{IncorrectKValueException, IncorrectPivotsAmountException, InsufficientInstancesException}
 import rknn_outlier_detection.shared.custom_objects.{DistanceObject, Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.Utils
@@ -13,9 +14,6 @@ class LAESA (
 ) extends KNNSearchStrategy{
 
     def findBasePivots(instances: RDD[Instance], sc: SparkContext): RDD[Instance] = {
-        if(instances.count() == 0)
-            return sc.parallelize(Seq())
-
         sc.parallelize(instances.takeSample(withReplacement=false, num=pivotsAmount, seed=1))
     }
 
@@ -34,13 +32,21 @@ class LAESA (
     sc: SparkContext
     ): RDD[(String, Array[KNeighbor])] = {
 
+        println(s"Executors: ${sc.getExecutorMemoryStatus}")
+
+        val instancesAmount = instances.count()
+
+        if(instancesAmount < 2) throw new InsufficientInstancesException(s"Received less than 2 instances ($instancesAmount), not enough for a neighbors search.")
+        if(pivotsAmount < 1 || pivotsAmount > instancesAmount) throw new IncorrectPivotsAmountException(s"Pivots amount ($pivotsAmount) has to be a number greater than 0 and up to the instances amount ($instancesAmount)")
+        if(k <= 1 || k > instancesAmount - 1) throw new IncorrectKValueException(s"k ($k) has to be a natural number between 1 and n - 1 (n is instances length)")
+
         // Select base pivots
         val basePivots = findBasePivots(instances, sc)
         val basePivotsIds = basePivots.map(_.id).collect()
 
         // Calculate and store the distance between a pivot and every instance, for all pivots
         val pivotsDistances = basePivots.cartesian(instances)
-//            .filter(tuple => tuple._1.id != tuple._2.id)
+            .filter(tuple => tuple._1.id != tuple._2.id)
             .map(tuple => {
                 val (pivot, instance) = tuple
                 val distance = distanceFunction(pivot.attributes, instance.attributes)

@@ -3,7 +3,7 @@ package rknn_outlier_detection.big_data.search.reverse_knn
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.shared.custom_objects.{KNeighbor, Neighbor}
 
-object ReverseKNNSearch {
+object ReverseNeighborsSearch {
     /**
      * Map instances to tuples of (kNeighborId, instanceId) for each kNeighbor
      * that an instance has.
@@ -25,7 +25,7 @@ object ReverseKNNSearch {
 
         val y = neighborReferences.groupByKey()
             .mapValues(rNeighbors => rNeighbors.map(
-                rNeighbor => new Neighbor(rNeighbor)
+                rNeighbor => new Neighbor(rNeighbor, 0)
             ).toArray)
 
         // Dealing with instances that don't have reverse neighbors and don't come

@@ -1,6 +1,5 @@
 package rknn_outlier_detection.big_data.detection
 
-// Case class ??? But it generates a bunch of unnecessary methods
 class AntihubRefinedParams (val step: Double, val ratio: Double){
     if(step <= 0){
         throw new Exception("step parameter must be greater than 0")

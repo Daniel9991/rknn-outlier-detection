@@ -5,17 +5,17 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.big_data.classification.ClassificationStrategy
 import rknn_outlier_detection.shared.custom_objects.Instance
 import rknn_outlier_detection.big_data.detection.DetectionStrategy
-import rknn_outlier_detection.big_data.search.reverse_knn.ReverseKNNSearch
+import rknn_outlier_detection.big_data.search.reverse_knn.ReverseNeighborsSearch
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 
 class Detector(
-                  val searchStrategy: KNNSearchStrategy,
-                  val detectionStrategy: DetectionStrategy,
-                  val classificationStrategy: ClassificationStrategy,
-                  val normalLabel: String,
-                  val outlierLabel: String,
-                    val sc: SparkContext
+  val searchStrategy: KNNSearchStrategy,
+  val detectionStrategy: DetectionStrategy,
+  val classificationStrategy: ClassificationStrategy,
+  val normalLabel: String,
+  val outlierLabel: String,
+  val sc: SparkContext
 ) {
 
     def detectOutliers(instances: RDD[Instance], k: Integer): RDD[(String, String)] ={
@@ -26,7 +26,7 @@ class Detector(
 
         // Find reverse neighbors
 
-        val y = ReverseKNNSearch.findReverseNeighbors(x)
+        val y = ReverseNeighborsSearch.findReverseNeighbors(x)
 
         // TODO analyze the need for this, as it adds extra complexity
         // Get k neighbors and reverse neighbors into instances
@@ -47,7 +47,6 @@ class Detector(
             })
 
         val outlierScores = detectionStrategy.detect(equippedInstances)
-
         classificationStrategy.classify(outlierScores, normalLabel, outlierLabel)
     }
 }

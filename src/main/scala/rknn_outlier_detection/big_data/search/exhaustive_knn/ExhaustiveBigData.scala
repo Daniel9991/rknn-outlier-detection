@@ -4,6 +4,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
+import rknn_outlier_detection.exceptions.{IncorrectKValueException, InsufficientInstancesException}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.Utils
@@ -90,19 +91,17 @@ object ExhaustiveBigData extends KNNSearchStrategy {
 
         val x = fullyMappedInstances.aggregateByKey(Array.fill[KNeighbor](k)(null))(
             (acc, neighbor) => {
+                var finalAcc = acc
                 if(acc.last == null || neighbor.distance < acc.last.distance)
-                    Utils.insertNeighborInArray(acc, neighbor)
+                    finalAcc = Utils.insertNeighborInArray(acc, neighbor)
 
-                acc
+                finalAcc
             },
             (acc1, acc2) => {
                 var finalAcc = acc1
                 for(neighbor <- acc2){
                     if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
                         finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
-                    }
-                    else{
-                        break
                     }
                 }
 
@@ -114,6 +113,9 @@ object ExhaustiveBigData extends KNNSearchStrategy {
     }
 
     override def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+        val instancesAmount = instances.count()
+        if(instancesAmount < 2) throw new InsufficientInstancesException("Received less than 2 instances, not enough for a neighbors search.")
+        if(k <= 1 || k > instancesAmount - 1) throw new IncorrectKValueException("k has to be a natural number between 1 and n - 1 (n is instances length)")
         findKNeighborsAggregatingPairs(instances, k, distanceFunction)
     }
 }

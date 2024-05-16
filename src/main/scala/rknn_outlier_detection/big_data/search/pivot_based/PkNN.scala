@@ -37,6 +37,9 @@ class PkNN(
 
     override def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
 
+        println(s"particiones: ${instances.partitions.length}")
+//        sc.stop()
+
         val pivots = findBasePivots(instances, sc)
 //        println(s"Pivots are ${pivots.map(_.id).collect().mkString("Array(", ", ", ")")}")
 //        val pivotsArr = pivots.collect()
@@ -62,6 +65,8 @@ class PkNN(
 
 //        println(cells.map(tuple => s"pivot ${tuple._1.id}\n${tuple._2.map(t => s"\n${t._1.id}")}").collect().mkString("-------"))
 
+        cells.cache()
+
         // Step 1
         val coreKNNs = cells.mapValues(iterable => {
             // Assuming that an array of instances fits into memory??? Maybe used distributed version???
@@ -73,7 +78,9 @@ class PkNN(
             })
         })
 
-//        println(coreKNNs.collect().map(tuple => {
+        coreKNNs.cache()
+
+        //        println(coreKNNs.collect().map(tuple => {
 //            val (pivot, associatedInstances) = tuple
 //            val associated = associatedInstances.map(t => (t._1, t._2))
 //            val parsed = associated.map(couple => s"\t${couple._1.id}: ${couple._2.map(n => s"${n.id} - ${n.distance}").mkString("Array(", ",   ", ")")}").mkString("\n")
@@ -89,7 +96,9 @@ class PkNN(
             }).max
         })
 
-//        println(s"core distances\n${coreDistances.map(tuple => s"${tuple._1.id}: ${tuple._2}").collect.mkString("\n")}")
+        coreDistances.cache()
+
+        //        println(s"core distances\n${coreDistances.map(tuple => s"${tuple._1.id}: ${tuple._2}").collect.mkString("\n")}")
 
         // Step 3
         val supportingDistances = coreKNNs.mapValues(iterable => {
@@ -101,6 +110,7 @@ class PkNN(
 
 //        println(s"supporting distances\n${supportingDistances.map(tuple => s"${tuple._1.id}: ${tuple._2}").collect.mkString("\n")}")
 
+        supportingDistances.cache()
 
         // Step 4
         val supportingCells = supportingDistances.cartesian(cells)
@@ -124,6 +134,8 @@ class PkNN(
 
 //        println(s"supporting cells amount:${supportingCells.collect.map(t => s"\n${t._1.id}: ${t._2.length}").mkString("")}")
 
+        supportingCells.cache()
+
         // Step 5
         val pruningMeasures = supportingCells.map(cellAndSupportingInstances => {
             val (cell, supportingInstances) = cellAndSupportingInstances
@@ -135,6 +147,8 @@ class PkNN(
             (cell, supportingInstancesAndPruneValue)
         })
 
+        pruningMeasures.cache()
+
         val finalSupportSets = coreDistances.join(pruningMeasures)
             .map(tuple => {
                 val (instance, coreDistanceAndCandidateSupportInstances) = tuple
@@ -142,6 +156,8 @@ class PkNN(
                 val supportSet = candidateSupportInstances.filter(tuple => tuple._2 < coreDistance).map(_._1)
                 (instance, supportSet)
             })
+
+        finalSupportSets.cache()
 
         // Step 6
 
@@ -154,6 +170,9 @@ class PkNN(
             })
             (pivot, instancesAndKNNs)
         })
+
+        trimmedCoreKNNs.cache()
+
         val finalKNNs = trimmedCoreKNNs.join(finalSupportSets).map(_._2).flatMap(tuple => {
             val (instancesAndKNNs, supportSet) = tuple
             val finalKNNs = instancesAndKNNs.map(instanceAndKNeighbors => {
@@ -169,6 +188,18 @@ class PkNN(
             finalKNNs
         })
 
+        finalKNNs.cache()
+        println(s"Checkpoint 1 - Cells: ${cells.partitions.length}")
+        println(s"Checkpoint 2 - CoreKNNs: ${coreKNNs.partitions.length}")
+        println(s"Checkpoint 3 - CoreDistances: ${coreDistances.partitions.length}")
+        println(s"Checkpoint 4 - SupportingDistances: ${supportingDistances.partitions.length}")
+        println(s"Checkpoint 5 - SupportingCells: ${supportingCells.partitions.length}")
+        println(s"Checkpoint 6 - PruningMeasures: ${pruningMeasures.partitions.length}")
+        println(s"Checkpoint 7 - FinalSupportSets: ${finalSupportSets.partitions.length}")
+        println(s"Checkpoint 8 - TrimmedCoreKNNs: ${trimmedCoreKNNs.partitions.length}")
+        println(s"Checkpoint 9 - FinalKNNs: ${finalKNNs.partitions.length}")
+        println(s"Executors: ${sc.getExecutorMemoryStatus}")
+
         finalKNNs.map(tuple => (tuple._1.id, tuple._2))
     }
 
@@ -178,4 +209,6 @@ class PkNN(
 
         sc.parallelize(instances.takeSample(withReplacement=false, num=pivotsAmount, seed=1))
     }
+
+//    def findKNeighborsDF()
 }

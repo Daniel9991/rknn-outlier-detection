@@ -1,11 +1,13 @@
 package rknn_outlier_detection.small_data.search.pivot_based
 
+import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
+import rknn_outlier_detection.small_data.search.KNNSearchStrategy
 
 import scala.util.Random
 
-class LAESA(val pivotsAmount: Int){
+class LAESA(val pivotsAmount: Int) extends KNNSearchStrategy {
 
     val SEED = 35612345
     val r = new Random(SEED)
@@ -19,15 +21,15 @@ class LAESA(val pivotsAmount: Int){
 //        Array(instances(0), instances(146), instances(147), instances(148), instances(149))
     }
 
-    def findAllKNeighbors(instances: Array[Instance], k: Int, custom: Boolean = false): Array[Array[KNeighbor]] ={
+    def findAllKNeighbors(instances: Array[Instance], k: Int, custom: Boolean = false, distanceFunction: DistanceFunction): Array[Array[KNeighbor]] ={
 
         // val pivotsAmount = findPivotsAmount(instances.length)
         val pivots = findPivots(instances, pivotsAmount)
-        val distances = pivots.map(pivot => instances.map(instance => DistanceFunctions.euclidean(pivot.attributes, instance.attributes)))
+        val distances = pivots.map(pivot => instances.map(instance => distanceFunction(pivot.attributes, instance.attributes)))
 
         val closestNeighborForAll = instances.map(instance => (
-            if(custom) findKNeighborsCustom(instance, instances, pivots, distances, k)
-            else findKNeighbors(instance, instances, pivots, distances, k)
+            if(custom) findKNeighborsCustom(instance, instances, pivots, distances, k, distanceFunction)
+            else findKNeighborsOriginal(instance, instances, pivots, distances, k)
         ))
         closestNeighborForAll
     }
@@ -50,7 +52,7 @@ class LAESA(val pivotsAmount: Int){
         (closestNeighborsForAll, distanciasTotales, eliminacionesTotales)
     }
 
-    def findKNeighbors(
+    def findKNeighborsOriginal(
         query: Instance,
         instances: Array[Instance],
         pivots: Array[Instance],
@@ -148,6 +150,7 @@ class LAESA(val pivotsAmount: Int){
         pivots: Array[Instance],
         distances: Array[Array[Double]],
         k: Int,
+        distanceFunction: DistanceFunction
     ): Array[KNeighbor] = {
 
         //        println(s"Query is: ${query.id}")
@@ -171,7 +174,7 @@ class LAESA(val pivotsAmount: Int){
         for(s <- pivots){
             val sIndexAsInst = instances.indexOf(s)
             val sIndexAsPivot = pivots.indexOf(s)
-            val dist = DistanceFunctions.euclidean(s.attributes, query.attributes)
+            val dist = distanceFunction(s.attributes, query.attributes)
             analyzedInstances(sIndexAsInst) = true
 
             //            println(s"Analyzing instance ${s.id} with distance ${dist}")
@@ -505,6 +508,10 @@ class LAESA(val pivotsAmount: Int){
             currentIndex -= 1
             kNeighbors(currentIndex) = newNeighbor
         }
+    }
+
+    override def findKNeighbors(instances: Array[Instance], k: Int, distanceFunction: DistanceFunction): Array[Array[KNeighbor]] = {
+        findAllKNeighbors(instances, k, custom = true, distanceFunction)
     }
 }
 
