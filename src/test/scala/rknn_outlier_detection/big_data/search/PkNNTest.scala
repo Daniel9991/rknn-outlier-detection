@@ -44,7 +44,7 @@ class PkNNTest extends AnyFunSuite {
         sortedArr1.sameElements(sortedArr2)
     }
 
-    val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2"))
+    val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2").set("spark.default.parallelism", "16"))
     val searchStrategy = new PkNN(2)
     val distFun: DistanceFunction = DistanceFunctions.euclidean
 
@@ -94,6 +94,8 @@ class PkNNTest extends AnyFunSuite {
         val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, distFun, sc)
         val kNeighbors = kNeighborsRDD.collect()
 
+//        println(kNeighbors.map(t => s"${t._1}: ${t._2.map(n => s"${n.id} - ${n.distance}").mkString("Array(", ", ", ")")}").mkString("Array(", "\n", ")"))
+
         assert(kNeighbors.forall(pair => pair._2.length == k))
 
         val sortedKNeighbors = kNeighbors.sortWith((a, b) => a._1 < b._1)
@@ -132,9 +134,9 @@ class PkNNTest extends AnyFunSuite {
         val instance7NeighborsIds = sortedKNeighbors(6)._2.map(_.id)
         assert(instance7NeighborsIds.sameElements(Array("4", "3", "6", "2", "5", "1")))
 
-        println(s"paralelismo: ${sc.defaultParallelism}")
-        System.in.read()
-        sc.stop()
+//        println(s"paralelismo: ${sc.defaultParallelism}")
+//        System.in.read()
+//        sc.stop()
     }
 
     test("(Iris) General knn and rknn"){

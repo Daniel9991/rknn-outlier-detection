@@ -1,6 +1,6 @@
 package rknn_outlier_detection.small_data.detection
 
-import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, Neighbor}
+import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
 object Antihub extends DetectionCriteria {
 
@@ -19,7 +19,7 @@ object Antihub extends DetectionCriteria {
             1.0 / count.toDouble
     }
 
-    override def scoreInstances(kNeighbors: Array[Array[KNeighbor]], reverseNeighbors: Array[Array[Neighbor]]): Array[Double] = {
+    override def scoreInstances(kNeighbors: Array[Array[KNeighbor]], reverseNeighbors: Array[Array[RNeighbor]]): Array[Double] = {
         reverseNeighbors.map(
             rNeighborsBatch => normalizeReverseNeighborsCount(rNeighborsBatch.length)
         )

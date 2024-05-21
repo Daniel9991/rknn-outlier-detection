@@ -1,13 +1,13 @@
 package rknn_outlier_detection.small_data.detection
 
-import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, Neighbor}
+import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
 class AntihubRefined(
     val step: Double,
     val ratio: Double
 ) extends DetectionCriteria {
 
-    override def scoreInstances(kNeighbors: Array[Array[KNeighbor]], reverseNeighbors: Array[Array[Neighbor]]): Array[Double] = {
+    override def scoreInstances(kNeighbors: Array[Array[KNeighbor]], reverseNeighbors: Array[Array[RNeighbor]]): Array[Double] = {
         val antihubScores = Antihub.scoreInstances(kNeighbors, reverseNeighbors)
 
         val neighborsScoreSum = kNeighbors.map(

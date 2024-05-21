@@ -1,6 +1,6 @@
 package rknn_outlier_detection.small_data.search
 
-import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, Neighbor}
+import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 import rknn_outlier_detection.shared.utils.Utils
 
 import scala.collection.mutable.ArrayBuffer
@@ -11,7 +11,7 @@ object ExhaustiveSmallData extends KNNSearchStrategy {
         instances: Array[Instance],
         k: Int,
         distanceFunction: (Array[Double], Array[Double]) => Double
-    ): (Array[Array[KNeighbor]], Array[Array[Neighbor]]) = {
+    ): (Array[Array[KNeighbor]], Array[Array[RNeighbor]]) = {
 
         val kNeighbors = findKNeighbors(instances, k, distanceFunction)
 

@@ -1,6 +1,6 @@
 package rknn_outlier_detection.big_data.detection
 import org.apache.spark.rdd.RDD
-import rknn_outlier_detection.shared.custom_objects.{Instance, Neighbor}
+import rknn_outlier_detection.shared.custom_objects.{Instance, RNeighbor}
 
 object Antihub extends DetectionStrategy {
 
@@ -15,7 +15,7 @@ object Antihub extends DetectionStrategy {
         instances.map(instance => (instance.id, normalizeReverseNeighborsCount(instance.rNeighbors.length)))
     }
 
-    def antihub(idsWithRNeighbors: RDD[(String, Array[Neighbor])]): RDD[(String, Double)] ={
+    def antihub(idsWithRNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)] ={
         idsWithRNeighbors.map(tuple => (tuple._1, normalizeReverseNeighborsCount(tuple._2.length)))
     }
 
