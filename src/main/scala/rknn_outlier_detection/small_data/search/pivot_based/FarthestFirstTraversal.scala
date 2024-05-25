@@ -25,7 +25,7 @@ class FarthestFirstTraversal[A](_objectSet: Array[Instance[A]]) extends PivotSel
 
         while(pivots.length < pivotsAmount){
             val nextPivot = objectSet.map(obj => {
-                val distanceToPivots = pivots.map(pivot => distanceFunction(obj.attributes, pivot.attributes)).min
+                val distanceToPivots = pivots.map(pivot => distanceFunction(obj.data, pivot.data)).min
                 (obj, distanceToPivots)
             }).maxBy(_._2)._1
 

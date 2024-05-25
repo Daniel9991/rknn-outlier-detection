@@ -1,10 +1,6 @@
 package rknn_outlier_detection.shared.custom_objects
 
-class Instance[A](val id: String, val attributes: A, val classification: String) extends Serializable{
-
-  var kNeighbors: Array[KNeighbor] = null
-  var rNeighbors: Array[RNeighbor] = null
-  var antihubScore: Double = 0.0
+class Instance[A](val id: String, val data: A) extends Serializable{
 
   override def hashCode: Int = this.id.toInt
 

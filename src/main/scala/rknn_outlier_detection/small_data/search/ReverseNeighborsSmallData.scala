@@ -4,32 +4,7 @@ import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeigh
 
 import scala.collection.mutable.ArrayBuffer
 
-class ReverseNeighborsSmallData[A] {
-    def findReverseNeighborsFromInstance(
-        instancesWithKNeighbors: Array[Instance[A]]
-    ): Array[Array[RNeighbor]] = {
-
-        // Initialize empty arrays for reverse neighbors
-        val reverseNeighbors = new Array[ArrayBuffer[RNeighbor]](
-            instancesWithKNeighbors.length
-        )
-        for (i <- instancesWithKNeighbors.indices) {
-            reverseNeighbors(i) = new ArrayBuffer[RNeighbor]()
-        }
-
-
-        instancesWithKNeighbors.zipWithIndex.foreach(tuple => {
-            val (instance, index) = tuple
-
-            instance.kNeighbors.zipWithIndex.foreach(subTuple => {
-                val (kNeighbor, index) = subTuple
-                val indexOfNeighbor = instancesWithKNeighbors.indexWhere(inst => inst.id == kNeighbor.id)
-                reverseNeighbors(indexOfNeighbor) += new RNeighbor(instance.id, index)
-            })
-        })
-
-        reverseNeighbors.map(reverseNeighborsBatch => reverseNeighborsBatch.toArray)
-    }
+object ReverseNeighborsSmallData {
 
     def findReverseNeighbors(allKNeighbors: Array[Array[KNeighbor]]): Array[Array[RNeighbor]] = {
         // The String in the tuple happens to be the index of that instance

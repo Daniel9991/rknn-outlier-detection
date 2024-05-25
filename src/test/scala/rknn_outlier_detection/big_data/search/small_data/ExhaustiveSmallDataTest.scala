@@ -1,19 +1,20 @@
 package rknn_outlier_detection.big_data.search.small_data
 
 import org.scalatest.funsuite.AnyFunSuite
+import rknn_outlier_detection.euclidean
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
-import rknn_outlier_detection.small_data.search.ExhaustiveSmallData
+import rknn_outlier_detection.small_data.search.{ExhaustiveSmallData, ReverseNeighborsSmallData}
 
 class ExhaustiveSmallDataTest extends AnyFunSuite {
 
-    val i1 = new Instance("1", Array(1.0, 1.0), "")
-    val i2 = new Instance("2", Array(2.0, 2.0), "")
-    val i3 = new Instance("3", Array(3.0, 3.0), "")
-    val i4 = new Instance("4", Array(4.0, 4.0), "")
-    val i5 = new Instance("5", Array(5.0, 5.0), "")
-    val i6 = new Instance("6", Array(1.9, 1.9), "")
-    val i7 = new Instance("7", Array(2.2, 2.2), "")
+    val i1 = new Instance("1", Array(1.0, 1.0))
+    val i2 = new Instance("2", Array(2.0, 2.0))
+    val i3 = new Instance("3", Array(3.0, 3.0))
+    val i4 = new Instance("4", Array(4.0, 4.0))
+    val i5 = new Instance("5", Array(5.0, 5.0))
+    val i6 = new Instance("6", Array(1.9, 1.9))
+    val i7 = new Instance("7", Array(2.2, 2.2))
 
     test("Empty RDD"){
         val testingData = Array[Instance[Array[Double]]]()
@@ -31,7 +32,8 @@ class ExhaustiveSmallDataTest extends AnyFunSuite {
         val k = 3
         val testingData = Array(i1, i2, i3, i4, i5)
 
-        val (kNeighbors, rNeighbors) = new ExhaustiveSmallData().findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
+        val kNeighbors = new ExhaustiveSmallData().findKNeighbors(testingData, k, euclidean)
+        val rNeighbors = ReverseNeighborsSmallData.findReverseNeighbors(kNeighbors)
 
         assert(kNeighbors.forall(neighbor => neighbor.length == k))
 
@@ -70,7 +72,8 @@ class ExhaustiveSmallDataTest extends AnyFunSuite {
         val k = 2
         val testingData = Array(i1, i6, i2, i7)
 
-        val (_, rNeighbors) = new ExhaustiveSmallData().findAllNeighbors(testingData, k, DistanceFunctions.euclidean)
+        val kNeighbors = new ExhaustiveSmallData().findKNeighbors(testingData, k, euclidean)
+        val rNeighbors = ReverseNeighborsSmallData.findReverseNeighbors(kNeighbors)
 
         // instance1
         assert(rNeighbors(0).isEmpty)

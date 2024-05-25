@@ -5,50 +5,6 @@ import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeigh
 
 class AntihubRefined[A](params: AntihubRefinedParams) extends DetectionStrategy[A] {
 
-    def antihubRefinedFromInstances(instances: RDD[Instance[A]]): RDD[(String, Double)] ={
-
-        // Find antihubScores for instances and add them to corresponding instances
-        val antihubScores = new Antihub().detectFromInstances(instances)
-        val keyedInstances = instances.map(instance => (instance.id, instance))
-        val scoredInstances = keyedInstances
-            .join(antihubScores)
-            .map(tuple => {
-                val (_, tuple2) = tuple
-                val (instance, antihubScore) = tuple2
-                instance.antihubScore = antihubScore
-                instance
-            })
-
-        var finalScores: RDD[(String, Double)] = findAggregateNeighborsAntihubFromInstances(scoredInstances)
-
-        var disc = 0.0
-        var i = 0
-        var alpha = params.step * i
-
-        val joinedScoreAndAggregatesScoresForInstance = antihubScores.join(finalScores)
-
-        while(alpha <= 1){
-
-            // Join for each instance id, the antihub value and the sum of instance neighbors antihub values
-            val newScores = joinedScoreAndAggregatesScoresForInstance.mapValues(tuple => {
-                val (antihubScore, aggregateScore) = tuple
-                (1 - alpha) * antihubScore + alpha * aggregateScore
-            })
-
-            // Find discrimination degree
-            val currentDisc = discScore(newScores.values, params.ratio)
-            if(currentDisc > disc){
-                finalScores = newScores
-                disc = currentDisc
-            }
-
-            i += 1
-            alpha = params.step * i
-        }
-
-        finalScores
-    }
-
     private def discScore(scores: RDD[Double], ratio: Double): Double ={
 
         val np = (scores.count() * ratio).toInt
@@ -79,26 +35,6 @@ class AntihubRefined[A](params: AntihubRefinedParams) extends DetectionStrategy[
         uniqueItems.size.toDouble / np.toDouble
     }
 
-    private def findAggregateNeighborsAntihubFromInstances(instances: RDD[Instance[A]]): RDD[(String, Double)] ={
-
-        val instancesToAntihubScores = instances.map(instance => (instance.id, instance.antihubScore))
-        val neighborsToInstances = instances.flatMap(instance => instance.kNeighbors.map(neighbor => (neighbor.id, instance.id)))
-        val neighborsToGroupedInstances = neighborsToInstances.groupByKey()
-        val neighborsToGroupedInstancesAndScores = neighborsToGroupedInstances
-            .join(instancesToAntihubScores)
-        val instancesToNeighborsScores = neighborsToGroupedInstancesAndScores.flatMap(tuple => {
-            val (_, tuple2) = tuple
-            val (instancesIds, score) = tuple2
-            instancesIds.map(instanceId => (instanceId, score))
-        })
-
-        val instancesIdsToGroupedScores = instancesToNeighborsScores.groupByKey()
-        val instancesIdsToAggregateScore = instancesIdsToGroupedScores
-            .mapValues(scoresInstances => scoresInstances.sum)
-
-        instancesIdsToAggregateScore
-    }
-
     private def findAggregateNeighborsAntihub(rNeighbors: RDD[(String, Array[RNeighbor])], antihubScores: RDD[(String, Double)]): RDD[(String, Double)] ={
 
         val rNeighborsAndScore = rNeighbors.join(antihubScores)
@@ -110,10 +46,6 @@ class AntihubRefined[A](params: AntihubRefinedParams) extends DetectionStrategy[
 //        val instanceAndGroupedKNeighborScore = instanceAndKNeighborScore.groupByKey()
 //        instanceAndGroupedKNeighborScore.mapValues(_.sum)
         instanceAndKNeighborScore.reduceByKey(_ + _)
-    }
-
-     override def detectFromInstances(instances: RDD[Instance[A]]): RDD[(String, Double)] = {
-        antihubRefinedFromInstances(instances)
     }
 
     def antihubRefined(rNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)] ={

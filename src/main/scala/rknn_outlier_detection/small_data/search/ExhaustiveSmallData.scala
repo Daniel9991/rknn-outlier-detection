@@ -8,33 +8,6 @@ import scala.collection.mutable.ArrayBuffer
 
 class ExhaustiveSmallData[A] extends KNNSearchStrategy[A] {
 
-    def findAllNeighbors(
-        instances: Array[Instance[A]],
-        k: Int,
-        distanceFunction: DistanceFunction[A]
-    ): (Array[Array[KNeighbor]], Array[Array[RNeighbor]]) = {
-
-        val kNeighbors = findKNeighbors(instances, k, distanceFunction)
-
-        val instancesWithKNeighbors = instances.zip(kNeighbors).map(tuple => {
-            val (instance, kNeighborsBatch) = tuple
-
-            val newInstance = new Instance(
-                instance.id,
-                instance.attributes,
-                instance.classification
-            )
-
-            newInstance.kNeighbors = kNeighborsBatch
-
-            newInstance
-        })
-
-        val reverseNeighbors = new ReverseNeighborsSmallData().findReverseNeighborsFromInstance(instancesWithKNeighbors)
-
-        (kNeighbors, reverseNeighbors)
-    }
-
     def findKNeighbors(
         instances: Array[Instance[A]],
         k: Int,
@@ -57,7 +30,7 @@ class ExhaustiveSmallData[A] extends KNNSearchStrategy[A] {
 
         dataset.foreach(instance => {
             if (instance.id != query.id) {
-                val distance = distanceFunction(query.attributes, instance.attributes)
+                val distance = distanceFunction(query.data, instance.data)
 
                 if (kNeighbors.contains(null) || kNeighbors.last.distance > distance) {
                     Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distance))

@@ -11,10 +11,6 @@ class RankedReverseCount[A](val k: Int) extends DetectionStrategy[A] with Serial
             1.0 / count
     }
 
-    def antihubFromInstances(instances: RDD[Instance[A]]): RDD[(String, Double)] ={
-        instances.map(instance => (instance.id, normalizeReverseNeighborsCount(instance.rNeighbors.length)))
-    }
-
     def calculateAnomalyDegree(idsWithRNeighbors: RDD[(String, Array[RNeighbor])], k: Int): RDD[(String, Double)] ={
         val rankDiscount = 0.7 / k.toDouble
         idsWithRNeighbors.map(tuple => {
@@ -22,10 +18,6 @@ class RankedReverseCount[A](val k: Int) extends DetectionStrategy[A] with Serial
             val rankedCount = reverseNeighbors.map(n => 1 - n.rank * rankDiscount).sum
             (id, normalizeReverseNeighborsCount(rankedCount))
         })
-    }
-
-    override def detectFromInstances(instances: RDD[Instance[A]]): RDD[(String, Double)] = {
-        antihubFromInstances(instances)
     }
 
     override def detect(reverseNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)] = {

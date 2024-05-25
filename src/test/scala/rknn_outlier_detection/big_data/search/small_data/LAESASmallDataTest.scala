@@ -41,13 +41,13 @@ class LAESASmallDataTest extends AnyFunSuite {
         sortedArr1.sameElements(sortedArr2)
     }
 
-    val i1 = new Instance("1", Array(1.0, 1.0), "")
-    val i2 = new Instance("2", Array(2.0, 2.0), "")
-    val i3 = new Instance("3", Array(3.0, 3.0), "")
-    val i4 = new Instance("4", Array(4.0, 4.0), "")
-    val i5 = new Instance("5", Array(5.0, 5.0), "")
-    val i6 = new Instance("6", Array(1.9, 1.9), "")
-    val i7 = new Instance("7", Array(2.2, 2.2), "")
+    val i1 = new Instance("1", Array(1.0, 1.0))
+    val i2 = new Instance("2", Array(2.0, 2.0))
+    val i3 = new Instance("3", Array(3.0, 3.0))
+    val i4 = new Instance("4", Array(4.0, 4.0))
+    val i5 = new Instance("5", Array(5.0, 5.0))
+    val i6 = new Instance("6", Array(1.9, 1.9))
+    val i7 = new Instance("7", Array(2.2, 2.2))
 
     test("Empty result"){
         val LAESAConfig = new LAESA[Array[Double]](1)
@@ -98,11 +98,11 @@ class LAESASmallDataTest extends AnyFunSuite {
         val baseInstances = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            new Instance(index.toString, attributes, classification="")
+            new Instance(index.toString, attributes)
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val (exhaustiveKNeighbors, _) = new ExhaustiveSmallData().findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val exhaustiveKNeighbors = new ExhaustiveSmallData().findKNeighbors(baseInstances, k, euclidean)
         val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, distanceFunction = euclidean)
 
         val mixedExhaustiveAndLAESAKNeighbors = exhaustiveKNeighbors.zip(laesaKNeighbors)
@@ -130,11 +130,11 @@ class LAESASmallDataTest extends AnyFunSuite {
         val baseInstances = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            new Instance(index.toString, attributes, classification="")
+            new Instance(index.toString, attributes)
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val (exhaustiveKNeighbors, _) = new ExhaustiveSmallData().findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val exhaustiveKNeighbors = new ExhaustiveSmallData().findKNeighbors(baseInstances, k, euclidean)
         val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, custom = true, distanceFunction = euclidean)
 
         val mixedExhaustiveAndLAESAKNeighbors = exhaustiveKNeighbors.zip(laesaKNeighbors)
@@ -154,7 +154,7 @@ class LAESASmallDataTest extends AnyFunSuite {
         val baseInstances = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            new Instance(index.toString, attributes, classification="")
+            new Instance(index.toString, attributes)
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data

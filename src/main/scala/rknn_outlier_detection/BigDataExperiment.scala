@@ -26,26 +26,32 @@ object BigDataExperiment {
         val detectionMethod = "antihub"
         if(detectionMethod != "antihub" && detectionMethod != "ranked" && detectionMethod != "refined") throw new Exception(s"Unknown detection strategy ${args(2)}")
 
-        val filepath = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection"
-        val datasetRelativePath = "testingDatasets\\creditcardMinMaxScaled.csv"
+        val fullPath = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection"
+//        val fullPath = System.getProperty("user.dir")
 
-        val rocFilename = s"${System.getProperty("user.dir")}\\rocs\\creditcard_${k}_${searchMethod}_${detectionMethod}.csv"
-        val datasetFilepath = s"${filepath}\\${datasetRelativePath}"
-//        val filepath = s"${System.getProperty("user.dir")}\\creditcardMinMaxScaled.csv"
+        val datasetRelativePath = "testingDatasets\\creditcardMinMaxScaled.csv"
+//        val datasetRelativePath = "datasets\\iris-synthetic-2.csv"
+        val rocRelativePath = s"rocs\\creditcard_${k}_${searchMethod}_${detectionMethod}.csv"
+
+        val datasetPath = s"${fullPath}\\${datasetRelativePath}"
+        val rocPath = s"${fullPath}\\${rocRelativePath}"
 
         val before = System.nanoTime
 
-//        val sc = new SparkContext(new SparkConf().setAppName("Sparking2"))
-        val sc = new SparkContext(new SparkConf().setMaster("local[*]").set("spark.default.parallelism", "16").setAppName("Sparking2"))
+        val sc = new SparkContext(new SparkConf().setAppName("Sparking2"))
+//        val sc = new SparkContext(new SparkConf().setMaster("local[*]").set("spark.default.parallelism", "16").setAppName("Sparking2"))
 
 //        val rawData = ReaderWriter.readCSV(filepath, hasHeader=false)
-        val rawData = sc.textFile(datasetFilepath).map(line => line.split(","))
-        val instances = rawData.zipWithIndex.map(tuple => {
+        val rawData = sc.textFile(datasetPath).map(line => line.split(","))
+        val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
             val classification = if(line.last == "1") "1.0" else "0.0"
-            new Instance(index.toString, attributes, classification=classification)
+            (new Instance(index.toString, attributes), classification)
         })
+        instancesAndClassification.cache()
+        val instances = instancesAndClassification.map(_._1)
+        println(s"There are ${instances.count} instances")
 
 //        val instances = sc.parallelize(instancesArray)
 //        println(s"---------------There are ${instances.count} read by textFile--------------")
@@ -56,39 +62,44 @@ object BigDataExperiment {
             case "pknn" => new PkNN(280).findKNeighbors(instances, k, euclidean, sc)
             case "exhaustive" =>  new ExhaustiveBigData().findKNeighbors(instances, k, euclidean, sc)
         }
+        kNeighbors.count()
 //        kNeighbors.cache()
 //        kNeighbors.count()
 //        val searchAfter = System.nanoTime
-        val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(kNeighbors)
+//        val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(kNeighbors)
 //        rNeighbors.cache()
 //        rNeighbors.count()
 //        val reverseAfter = System.nanoTime
-        val detectionResult = detectionMethod match {
-            case "antihub" => new Antihub().antihub(rNeighbors)
-            case "ranked" => new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
-            case "refined" => new AntihubRefined(new AntihubRefinedParams(0.2, 0.3)).antihubRefined(rNeighbors)
-        }
-//        detectionResult.count()
-        val after = System.nanoTime
-
-        val predictionsAndLabels = instances.map(instance => (instance.id, instance.classification)).join(detectionResult).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-        val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
-        val elapsedTime = s"${(after - before) / 1000000}ms"
-//        val setupTime = s"${(searchBefore - before) / 1000000}ms"
-//        val knnTime = s"${(searchAfter - searchBefore) / 1000000}ms"
-//        val reverseTime = s"${(reverseAfter - searchAfter) / 1000000}ms"
-//        val detectionTime = s"${(after - reverseAfter) / 1000000}ms"
-
-        println(s"-----------------------------------\nArea under ROC: ${detectionMetrics.areaUnderROC()}\nArea under Precision-Recall Curve: ${detectionMetrics.areaUnderPR()}\n-----------------------------------")
-//        println(s"-----------------------------------\nElapsed time: $elapsedTime\nSetup time: $setupTime\nSearch time: $knnTime\nReverse time: $reverseTime\nDetection time: $detectionTime\n-----------------------------------")
-//        println(s"-----------------------------\nPartitions $partitionsAmount\nTime: $elapsedTime\nFinal partitions: ${detectionResult.partitions.length}")
-//        System.in.read()
-//        sc.stop()
-        val roc = detectionMetrics.roc().collect()
-        val rocTextForCSV = roc.map(tuple => s"${tuple._1},${tuple._2}").mkString("\n")
-        ReaderWriter.writeToFile(rocFilename, rocTextForCSV)
-        val resultsFileId = s"${searchMethod}_${detectionMethod}_${k}"
-        saveStatistics(resultsFileId, detectionMetrics.areaUnderROC(), detectionMetrics.areaUnderPR(), s"$elapsedTime")
+//        val detectionResult = detectionMethod match {
+//            case "antihub" => new Antihub().antihub(rNeighbors)
+//            case "ranked" => new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
+//            case "refined" => new AntihubRefined(new AntihubRefinedParams(0.2, 0.3)).antihubRefined(rNeighbors)
+//        }
+////        detectionResult.count()
+//        val after = System.nanoTime
+//
+//        val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
+//        val predictionsAndLabels = classifications.join(detectionResult).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+//        println(predictionsAndLabels.collect().mkString("Array(\n\t", ",\n\t ", ")"))
+//        val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
+//        val elapsedTime = s"${(after - before) / 1000000}ms"
+////        val setupTime = s"${(searchBefore - before) / 1000000}ms"
+////        val knnTime = s"${(searchAfter - searchBefore) / 1000000}ms"
+////        val reverseTime = s"${(reverseAfter - searchAfter) / 1000000}ms"
+////        val detectionTime = s"${(after - reverseAfter) / 1000000}ms"
+//
+//        println(s"-----------------------------------\nArea under ROC: ${detectionMetrics.areaUnderROC()}\nArea under Precision-Recall Curve: ${detectionMetrics.areaUnderPR()}\n-----------------------------------")
+////        println(s"-----------------------------------\nElapsed time: $elapsedTime\nSetup time: $setupTime\nSearch time: $knnTime\nReverse time: $reverseTime\nDetection time: $detectionTime\n-----------------------------------")
+////        println(s"-----------------------------\nPartitions $partitionsAmount\nTime: $elapsedTime\nFinal partitions: ${detectionResult.partitions.length}")
+////        System.in.read()
+////        sc.stop()
+//        val roc = detectionMetrics.roc().collect()
+//        val rocTextForCSV = roc.map(tuple => s"${tuple._1},${tuple._2}").mkString("\n")
+//        ReaderWriter.writeToFile(rocPath, rocTextForCSV)
+//        val resultsFileId = s"${searchMethod}_${detectionMethod}_${k}"
+//        saveStatistics(resultsFileId, detectionMetrics.areaUnderROC(), detectionMetrics.areaUnderPR(), s"$elapsedTime")
+        System.in.read()
+        sc.stop()
     }
 
     def saveStatistics(testId: String, auroc: Double, auprc: Double, time: String): Unit = {
@@ -96,50 +107,6 @@ object BigDataExperiment {
         val previousRecordsText = ReaderWriter.readCSV(filename, hasHeader=false).map(line => line.mkString(",")).mkString("\n")
         val updatedRecords = s"${previousRecordsText}\n$testId,$auroc,$auprc,$time"
         ReaderWriter.writeToFile(filename, updatedRecords)
-    }
-
-    def bigDataExperiment(): Unit = {
-
-        val before = System.nanoTime
-
-        val sc = new SparkContext(
-            new SparkConf()
-//                .setMaster("spark://192.168.0.100:7077")
-                .setAppName("Sparking2"))
-
-        val datasetFilename = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\datasets\\iris-synthetic-2.csv"
-        val distanceFunction = euclidean
-//        val k = 10
-        val k = 20
-//        val k = 30
-//        val k = 40
-
-        val rawData = ReaderWriter.readCSV(datasetFilename, hasHeader=false)
-        val instancesArray = rawData.zipWithIndex.map(tuple => {
-            val (line, index) = tuple
-            val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            val classification = if(line.last == "Iris-setosa") "1.0" else "0.0"
-            new Instance(index.toString, attributes, classification=classification)
-        })
-
-        val instances = sc.parallelize(instancesArray)
-        val kNeighbors = new ExhaustiveBigData().findKNeighbors(instances, k, distanceFunction, sc)
-        val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(kNeighbors)
-//        val detectionResult = Antihub.antihub(rNeighbors)
-        val detectionResult = new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
-
-        val after = System.nanoTime
-
-        val predictionsAndLabels = instances.map(instance => (instance.id, instance.classification)).join(detectionResult).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-        val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
-        println(s"Area under ROC: ${detectionMetrics.areaUnderROC()}\nArea under Precision-Recall Curve: ${detectionMetrics.areaUnderPR()}")
-
-        println(s"Elapsed time: ${(after - before) / 1000000}ms")
-
-//        val roc = detectionMetrics.roc().collect()
-//        println(roc.mkString("Array(", ", ", ")"))
-//        val rocTextForCSV = roc.map(tuple => s"${tuple._1},${tuple._2}").mkString("\n")
-//        ReaderWriter.writeToFile("testingDatasets/rocData.csv", rocTextForCSV)
     }
 
 //    def syntheticIrisExperiment(): Unit = {

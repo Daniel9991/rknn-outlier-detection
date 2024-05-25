@@ -49,7 +49,7 @@ class LAESA[A] (
             .filter(tuple => tuple._1.id != tuple._2.id)
             .map(tuple => {
                 val (pivot, instance) = tuple
-                val distance = distanceFunction(pivot.attributes, instance.attributes)
+                val distance = distanceFunction(pivot.data, instance.data)
                 val distanceObject = new DistanceObject(pivot.id, instance.id, distance)
                 (instance , distanceObject)
             })
@@ -102,11 +102,11 @@ class LAESA[A] (
             instancesWithCotas.filter(t => !basePivotsIds.contains(t._1.id)).foreach(pair => {
                 val (instance, cota) = pair
                 if(kNeighbors.contains(null)){
-                    Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distanceFunction(query.attributes, instance.attributes)))
+                    Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distanceFunction(query.data, instance.data)))
                 }
                 else{
                     if(cota <= kNeighbors.last.distance){
-                        val distance = distanceFunction(query.attributes, instance.attributes)
+                        val distance = distanceFunction(query.data, instance.data)
                         if(distance < kNeighbors.last.distance){
                             Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distance))
                         }

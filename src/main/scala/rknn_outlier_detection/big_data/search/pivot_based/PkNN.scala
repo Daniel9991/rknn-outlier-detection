@@ -10,6 +10,8 @@ import rknn_outlier_detection.shared.utils.Utils
 import rknn_outlier_detection.shared.utils.Utils.addNewNeighbor
 import rknn_outlier_detection.small_data.search.ExhaustiveSmallData
 
+import scala.collection.mutable
+
 /*
 * This class implements a knn pivot-based search method for distributed environments based
 * on the following paper. https://link.springer.com/chapter/10.1007/978-3-319-71246-8_51
@@ -17,10 +19,9 @@ import rknn_outlier_detection.small_data.search.ExhaustiveSmallData
 
 class PkNN[A](
     pivotsAmount: Int,
-) extends KNNSearchStrategy[A] {
+) extends KNNSearchStrategy[A] with Serializable{
 
 //    val pivotSelector = new IncrementalSelection[A](700, 800)
-    // each partition needs a support set for the cell so that all neighbors can be found locally
 
     // Multistep pknn
     // 1. knn for each point of each cell -> core knn
@@ -31,25 +32,54 @@ class PkNN[A](
     // rest between the distance (|vi, q| - |vj, q|)/2 >= core-distance(vi)
     // 6. remove outliers to balance nodes and support sets
 
+    def getKeyFromInstancesIds(id1: String, id2: String): String = {
+        if(id1 < id2) s"${id1}_${id2}" else s"${id2}_${id1}"
+    }
+
+    def getDistancesMap(pivots: Array[Instance[A]], distanceFunction: DistanceFunction[A]): mutable.Map[String, Double] ={
+        val pivotDistances = mutable.Map[String, Double]()
+        for (i <- pivots.indices){
+            val i1 = pivots(i)
+            for(j <- i + 1 until pivots.length){
+                val i2 = pivots(j)
+                pivotDistances(getKeyFromInstancesIds(i1.id, i2.id)) = distanceFunction(i1.data, i2.data)
+            }
+        }
+        pivotDistances
+    }
+
     override def findKNeighbors(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A], sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
 
         val pivots = findBasePivots(instances, sc)
 //        val pivots = sc.parallelize(pivotSelector.findPivots(instances, pivotsAmount,distanceFunction))
 
+        // Finding pivots distances and broadcasting them
+        val localPivots = pivots.collect()
+        val pivotDistances = getDistancesMap(localPivots, distanceFunction)
+        val broadcastedPivotDistances = sc.broadcast(pivotDistances)
+
+
         // Create cells
         val cells = instances.cartesian(pivots)
             .map(tuple => {
                 val (instance, pivot) = tuple
-                (instance, (pivot, distanceFunction(instance.attributes, pivot.attributes)))
+                (instance, (pivot, distanceFunction(instance.data, pivot.data)))
             })
             .reduceByKey((pivotDist1, pivotDist2) => if(pivotDist2._2 < pivotDist1._2) pivotDist2 else pivotDist1)
             .map(t => (t._2._1, (t._1, t._2._2)))
-            .groupByKey
+
 
         cells.cache()
 
+//        val cellsLengths = cells.map(cell => cell._2.toArray.length).collect()
+//        println(s"Total cells: ${cellsLengths.length}")
+//        println(s"Min instances in cell: ${cellsLengths.min}")
+//        println(s"Max instances in cell: ${cellsLengths.max}")
+//        println(s"Avg instances in cell: ${cellsLengths.sum.toDouble / cellsLengths.length.toDouble}")
+//        sc.stop()
+
         // Step 1
-        val coreKNNs = cells.mapValues(iterable => {
+        val coreKNNs = cells.groupByKey.mapValues(iterable => {
             // Assuming that an array of instances fits into memory??? Maybe used distributed version???
             val knns = new ExhaustiveSmallData().findKNeighbors(iterable.map(_._1).toArray, k, distanceFunction)
             iterable.zip(knns).map(tuple => {
@@ -79,113 +109,48 @@ class PkNN[A](
             }).max
         })
 
-//        supportingDistances.cache()
 
-        // Step 4
-//        val supportingCells = supportingDistances.cartesian(cells)
-//            .filter(tuple => tuple._1._1.id != tuple._2._1.id)
-//            .groupByKey()
-//            .map(tuple => {
-//                val (cellAndSupportDistance, allOtherCells) = tuple
-//                val (cell, supportDistance) = cellAndSupportDistance
-//
-//                // TODO Iterable has no filter method? Need to find array alternative
-//                val supportCells = allOtherCells
-//                    .toArray
-//                    .filter(otherCell => {
-//                        val (cellPivot, _) = otherCell
-//                        DistanceFunctions.euclidean(cell.attributes, cellPivot.attributes) / 2 <= supportDistance
-//                    })
-//                    .flatMap(tuple => tuple._2)
-//
-//                (cell, supportCells)
-//            })
 
-//        val supportCells1 = supportingDistances.cartesian(cells)
-//            .filter(tuple => {
-//                tuple._1._1.id != tuple._2._1.id &&
-//                    distanceFunction(tuple._1._1.attributes, tuple._2._1.attributes) / 2 <= tuple._1._2
-//            })
-//            .flatMapValues(otherCell => otherCell._2).map(tuple => (tuple._1._1, tuple._2))
-//
-////        supportCells.cache()/
-//
-//        // Step 5
-//        val pruningMeasurements1 = supportCells1.map(cellAndSupportInstance => {
-//            val (pivot, supportInstanceAndDist) = cellAndSupportInstance
-//            val (supportInstance, distanceToItsPivot) = supportInstanceAndDist
-//            val pruneValue = math.abs(distanceFunction(pivot.attributes, supportInstance.attributes) - distanceToItsPivot) / 2
-//            (pivot, (supportInstance, pruneValue))
-//        })
-//
-//        val finalSupportSets1 = coreDistances.join(pruningMeasurements1)
-//            .filter(tuple => tuple._2._2._2 < tuple._2._1)
-//            .map(tuple => {
-//                val pivot = tuple._1
-//                val supportInstance = tuple._2._2._1
-//                (pivot, supportInstance)
-//            })
-//            .groupByKey()
+        // Step 4 Find support sets
 
-        // ------------------ Testing -------------------
+        // Get a tuple for pivot, coreDistance, supportDistance
         val pivotsAndDistances = coreDistances.join(supportingDistances).map(tuple => (tuple._1, tuple._2._1, tuple._2._2))
+        // Get combination of pivots getting a pivot and an iterable of the pivots that it supports
         val pivotsCombinations = pivotsAndDistances.cartesian(pivotsAndDistances).filter(tuple => {
             tuple._1._1.id != tuple._2._1.id &&
-                distanceFunction(tuple._1._1.attributes, tuple._2._1.attributes) / 2 <= tuple._1._3
+//                distanceFunction(tuple._1._1.data, tuple._2._1.data) / 2 <= tuple._1._3
+            broadcastedPivotDistances.value(getKeyFromInstancesIds(tuple._1._1.id, tuple._2._1.id)) / 2 <= tuple._1._3
         }).map(tuple => (tuple._1._1, tuple._2)).groupByKey
 
+        // Step 5 Prune candidate instances
+
         val finalSupportSets = cells.join(pivotsCombinations).flatMap(tuple => {
-            val (pivotInstances, otherPivotTuple) = tuple._2
-            otherPivotTuple.flatMap(pivotData => {
-                    pivotInstances.toArray.filter(instance => {
-                        val pruneMeasurement = math.abs(distanceFunction(pivotData._1.attributes, instance._1.attributes) - instance._2) / 2
-                        pruneMeasurement < pivotData._2
-                    }).map(supportInstance => (pivotData._1, supportInstance._1))
-            })
+            val (candidateInstance, pivotsToSupport) = tuple._2
+            pivotsToSupport.filter(pivotData => {
+                val pruneMeasurement = math.abs(distanceFunction(pivotData._1.data, candidateInstance._1.data) - candidateInstance._2) / 2
+                pruneMeasurement < pivotData._2
+            }).map(pivotData => (pivotData._1, candidateInstance._1))
         }).groupByKey()
 
-        // Step 6
 
-        // Adjust knn with support sets
-//        val trimmedCoreKNNs = coreKNNs.map(tuple => {
-//            val (pivot, instancesAndKNNsAndDistanceToPivot) = tuple
-//            val instancesAndKNNs = instancesAndKNNsAndDistanceToPivot.map(secondTuple => {
-//                val (instance, knns, distanceToPivot) = secondTuple
-//                (instance, knns)
-//            })
-//            (pivot, instancesAndKNNs)
-//        })
-//
-//        trimmedCoreKNNs.cache()
+        // Correct knn search
 
-        val finalKNNs = coreKNNs.join(finalSupportSets).map(_._2).flatMap(tuple => {
-            val (instancesAndKNNs, supportSet) = tuple
+        val finalKNNs = coreKNNs.join(finalSupportSets).flatMap(tuple => {
+            val (instancesAndKNNs, supportSet) = tuple._2
             val finalKNNs = instancesAndKNNs.map(instanceAndKNeighbors => {
                 val (instance, kNeighbors, _) = instanceAndKNeighbors
                 supportSet.foreach(supportInstance => {
-                    val distance = distanceFunction(instance.attributes, supportInstance.attributes)
+                    val distance = distanceFunction(instance.data, supportInstance.data)
                     if(kNeighbors.contains(null) || kNeighbors.last.distance > distance){
                         addNewNeighbor(kNeighbors, new KNeighbor(supportInstance.id, distance))
                     }
                 })
-                (instance, kNeighbors)
+                (instance.id, kNeighbors)
             })
             finalKNNs
         })
 
-//        finalKNNs.cache()
-//        println(s"Checkpoint 1 - Cells: ${cells.partitions.length}")
-//        println(s"Checkpoint 2 - CoreKNNs: ${coreKNNs.partitions.length}")
-//        println(s"Checkpoint 3 - CoreDistances: ${coreDistances.partitions.length}")
-//        println(s"Checkpoint 4 - SupportingDistances: ${supportingDistances.partitions.length}")
-//        println(s"Checkpoint 5 - SupportingCells: ${supportingCells.partitions.length}")
-//        println(s"Checkpoint 6 - PruningMeasures: ${pruningMeasures.partitions.length}")
-//        println(s"Checkpoint 7 - FinalSupportSets: ${finalSupportSets.partitions.length}")
-//        println(s"Checkpoint 8 - TrimmedCoreKNNs: ${trimmedCoreKNNs.partitions.length}")
-//        println(s"Checkpoint 9 - FinalKNNs: ${finalKNNs.partitions.length}")
-//        println(s"Executors: ${sc.getExecutorMemoryStatus}")
-
-        finalKNNs.map(tuple => (tuple._1.id, tuple._2))
+        finalKNNs
     }
 
     def findBasePivots(instances: RDD[Instance[A]], sc: SparkContext): RDD[Instance[A]] = {

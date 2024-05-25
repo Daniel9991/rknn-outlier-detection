@@ -38,40 +38,6 @@ class AntihubRefined[A](
         finalScores
     }
 
-    override def scoreInstancesFromInstances(
-        instances: Array[Instance[A]],
-    ): Array[Double] = {
-
-        val antihubScores = new Antihub().scoreInstancesFromInstances(instances)
-
-        val neighborsScoreSum = instances.map(
-            instance => instance.kNeighbors
-                .map(neighbor => antihubScores(neighbor.id.toInt)).sum
-        )
-
-        var finalScores = antihubScores.clone()
-        var disc: Double = 0
-        var i = 0
-        var alpha = step * i
-
-        while(i <= antihubScores.length && alpha <= 1){
-
-            val newScores = antihubScores.zip(neighborsScoreSum)
-                .map(tuple => findRefinedScore(tuple._1, tuple._2, alpha))
-
-            val currentDisc = discScore(newScores, ratio)
-            if(currentDisc > disc){
-                finalScores = newScores.clone()
-                disc = currentDisc
-            }
-
-            i += 1
-            alpha = step * i
-        }
-
-        finalScores
-    }
-
     def discScore(scores: Array[Double], ratio: Double): Double = {
         val scoresCopy = scores.clone()
 

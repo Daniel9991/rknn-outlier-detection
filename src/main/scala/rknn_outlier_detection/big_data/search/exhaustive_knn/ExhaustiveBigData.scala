@@ -39,7 +39,7 @@ class ExhaustiveBigData[A] extends KNNSearchStrategy[A] {
                 ins1.id,
                 new KNeighbor(
                 ins2.id,
-                    distanceFunction(ins1.attributes, ins2.attributes)
+                    distanceFunction(ins1.data, ins2.data)
                 )
                 )
             })
@@ -82,7 +82,7 @@ class ExhaustiveBigData[A] extends KNNSearchStrategy[A] {
                     ins1.id,
                     new KNeighbor(
                         ins2.id,
-                        distanceFunction(ins1.attributes, ins2.attributes)
+                        distanceFunction(ins1.data, ins2.data)
                     )
                 )
             })

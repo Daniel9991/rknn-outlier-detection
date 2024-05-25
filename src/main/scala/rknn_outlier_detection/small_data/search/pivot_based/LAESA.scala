@@ -25,7 +25,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
 
         // val pivotsAmount = findPivotsAmount(instances.length)
         val pivots = findPivots(instances, pivotsAmount)
-        val distances = pivots.map(pivot => instances.map(instance => distanceFunction(pivot.attributes, instance.attributes)))
+        val distances = pivots.map(pivot => instances.map(instance => distanceFunction(pivot.data, instance.data)))
 
         val closestNeighborForAll = instances.map(instance => (
             if(custom) findKNeighborsCustom(instance, instances, pivots, distances, k, distanceFunction)
@@ -38,7 +38,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
 
         // val pivotsAmount = findPivotsAmount(instances.length)
         val pivots = findPivots(instances, pivotsAmount)
-        val distances = pivots.map(pivot => instances.map(instance => distanceFunction(pivot.attributes, instance.attributes)))
+        val distances = pivots.map(pivot => instances.map(instance => distanceFunction(pivot.data, instance.data)))
 
         val results = instances.map(instance => (
             if(custom) findKNeighborsCustomForBenchmark(instance, instances, pivots, distances, distanceFunction, k)
@@ -79,7 +79,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
         //       are as approximate as possible (cotas array)
         // Mientras haya instancias que no hayan sido analizadas
         while(analyzedInstances.contains(false)){
-            val dist = distanceFunction(s.attributes, query.attributes)
+            val dist = distanceFunction(s.data, query.data)
             analyzedInstances(sIndexAsInst) = true
 
 //            println(s"Analyzing instance ${s.id} with distance ${dist}")
@@ -175,7 +175,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
         for(s <- pivots){
             val sIndexAsInst = instances.indexOf(s)
             val sIndexAsPivot = pivots.indexOf(s)
-            val dist = distanceFunction(s.attributes, query.attributes)
+            val dist = distanceFunction(s.data, query.data)
             analyzedInstances(sIndexAsInst) = true
 
             //            println(s"Analyzing instance ${s.id} with distance ${dist}")
@@ -216,7 +216,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
 
         // Mientras haya instancias que no hayan sido analizadas
         while(analyzedInstances.contains(false)){
-            val dist = distanceFunction(s.attributes, query.attributes)
+            val dist = distanceFunction(s.data, query.data)
             analyzedInstances(sIndexAsInst) = true
 
             //            println(s"Analyzing instance ${s.id} with distance ${dist}")
@@ -287,7 +287,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
 
         // Mientras haya instancias que no hayan sido analizadas
         while(analyzedInstances.contains(false)){
-            val dist = distanceFunction(s.attributes, query.attributes)
+            val dist = distanceFunction(s.data, query.data)
             distancias += 1
             analyzedInstances(sIndexAsInst) = true
 
@@ -388,7 +388,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
         for(s <- pivots){
             val sIndexAsInst = instances.indexOf(s)
             val sIndexAsPivot = pivots.indexOf(s)
-            val dist = distanceFunction(s.attributes, query.attributes)
+            val dist = distanceFunction(s.data, query.data)
             distancias += 1
             analyzedInstances(sIndexAsInst) = true
 
@@ -431,7 +431,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
 
         // Mientras haya instancias que no hayan sido analizadas
         while(analyzedInstances.contains(false)){
-            val dist = distanceFunction(s.attributes, query.attributes)
+            val dist = distanceFunction(s.data, query.data)
             distancias += 1
             analyzedInstances(sIndexAsInst) = true
 

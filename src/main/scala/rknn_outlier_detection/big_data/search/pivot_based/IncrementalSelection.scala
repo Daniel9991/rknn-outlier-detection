@@ -68,8 +68,8 @@ class IncrementalSelection[A] (
     def findPivotSetDistanceDistributionMean(pivots: Array[Instance[A]], objectPairs: Array[(Instance[A], Instance[A])], distanceFunction: DistanceFunction[A]): Double = {
         val maxDistances = objectPairs.map(pair => {
             val (obj1, obj2) = pair
-            val obj1Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.attributes, obj1.attributes)))
-            val obj2Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.attributes, obj2.attributes)))
+            val obj1Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.data, obj1.data)))
+            val obj2Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.data, obj2.data)))
             val maxDistance = obj1Mapping.zip(obj2Mapping).map(tuple => {
                 if(tuple._1._1.id != tuple._2._1.id){
                     throw new Exception("Pivots ids are not the same")

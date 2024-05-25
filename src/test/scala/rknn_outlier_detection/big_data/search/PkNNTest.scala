@@ -45,16 +45,16 @@ class PkNNTest extends AnyFunSuite {
     }
 
     val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2").set("spark.default.parallelism", "16"))
-    val searchStrategy = new PkNN[Array[Double]](3)
+    val searchStrategy = new PkNN[Array[Double]](5)
     val distFun: DistanceFunction[Array[Double]] = euclidean
 
-    val i1 = new Instance("1", Array(1.0, 1.0), "")
-    val i2 = new Instance("2", Array(2.0, 2.0), "")
-    val i3 = new Instance("3", Array(3.0, 3.0), "")
-    val i4 = new Instance("4", Array(5.0, 5.0), "")
-    val i5 = new Instance("5", Array(1.9, 1.6), "")
-    val i6 = new Instance("6", Array(2.2, 2.4), "")
-    val i7 = new Instance("7", Array(6.4, 7.7), "")
+    val i1 = new Instance("1", Array(1.0, 1.0))
+    val i2 = new Instance("2", Array(2.0, 2.0))
+    val i3 = new Instance("3", Array(3.0, 3.0))
+    val i4 = new Instance("4", Array(5.0, 5.0))
+    val i5 = new Instance("5", Array(1.9, 1.6))
+    val i6 = new Instance("6", Array(2.2, 2.4))
+    val i7 = new Instance("7", Array(6.4, 7.7))
 
     test("k less than 1"){
         val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2))
@@ -143,15 +143,15 @@ class PkNNTest extends AnyFunSuite {
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects
-        val rawData = ReaderWriter.readCSV("datasets/iris.csv", hasHeader=false)
+        val rawData = ReaderWriter.readCSV("datasets/iris-synthetic-2.csv", hasHeader=false)
         val baseInstances = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            new Instance(index.toString, attributes, classification="")
+            new Instance(index.toString, attributes)
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val (smallKNeighbors, _) = new ExhaustiveSmallData().findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val smallKNeighbors = new ExhaustiveSmallData().findKNeighbors(baseInstances, k, euclidean)
 
         // Getting kNeighbors from ExhaustiveSearch big data
         val rdd = sc.parallelize(baseInstances.toSeq, 2)

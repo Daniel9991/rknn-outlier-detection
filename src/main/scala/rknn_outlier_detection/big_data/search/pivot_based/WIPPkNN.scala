@@ -42,7 +42,7 @@ class WIPPkNN [A](
         val cells = instances.cartesian(pivots)
             .map(tuple => {
                 val (instance, pivot) = tuple
-                (instance, (pivot, distanceFunction(instance.attributes, pivot.attributes)))
+                (instance, (pivot, distanceFunction(instance.data, pivot.data)))
             })
             .reduceByKey((pivotDist1, pivotDist2) => if(pivotDist2._2 < pivotDist1._2) pivotDist2 else pivotDist1)
             .map(t => (t._2._1, (t._1, t._2._2)))
@@ -96,7 +96,7 @@ class WIPPkNN [A](
                     .toArray
                     .filter(otherCell => {
                         val (cellPivot, _) = otherCell
-                        distanceFunction(cell.attributes, cellPivot.attributes) / 2 <= supportDistance
+                        distanceFunction(cell.data, cellPivot.data) / 2 <= supportDistance
                     })
                     .flatMap(tuple => tuple._2)
 
@@ -106,7 +106,7 @@ class WIPPkNN [A](
         val supportCells = supportingDistances.cartesian(cells)
             .filter(tuple => {
                 tuple._1._1.id != tuple._2._1.id &&
-                    distanceFunction(tuple._1._1.attributes, tuple._2._1.attributes) / 2 <= tuple._1._2
+                    distanceFunction(tuple._1._1.data, tuple._2._1.data) / 2 <= tuple._1._2
             })
             .flatMapValues(otherCell => otherCell._2).map(tuple => (tuple._1._1, tuple._2))
 
@@ -116,7 +116,7 @@ class WIPPkNN [A](
         val pruningMeasurements = supportCells.map(cellAndSupportInstance => {
             val (pivot, supportInstanceAndDist) = cellAndSupportInstance
             val (supportInstance, distanceToItsPivot) = supportInstanceAndDist
-            val pruneValue = math.abs(distanceFunction(pivot.attributes, supportInstance.attributes) - distanceToItsPivot) / 2
+            val pruneValue = math.abs(distanceFunction(pivot.data, supportInstance.data) - distanceToItsPivot) / 2
             (pivot, (supportInstance, pruneValue))
         })
 
@@ -125,7 +125,7 @@ class WIPPkNN [A](
             .map(tuple => {
                 val pivot = tuple._1
                 val supportInstance = tuple._2._2._1
-                (pivot, new KNeighbor(supportInstance.id, distanceFunction(pivot.attributes, supportInstance.attributes)
+                (pivot, new KNeighbor(supportInstance.id, distanceFunction(pivot.data, supportInstance.data)
                 ))
             })
 

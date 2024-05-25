@@ -46,13 +46,13 @@ class LAESATest extends AnyFunSuite {
 
     val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2"))
 
-    val i1 = new Instance("1", Array(1.0, 1.0), "")
-    val i2 = new Instance("2", Array(2.0, 2.0), "")
-    val i3 = new Instance("3", Array(3.0, 3.0), "")
-    val i4 = new Instance("4", Array(5.0, 5.0), "")
-    val i5 = new Instance("5", Array(1.9, 1.6), "")
-    val i6 = new Instance("6", Array(2.2, 2.4), "")
-    val i7 = new Instance("7", Array(6.4, 7.7), "")
+    val i1 = new Instance("1", Array(1.0, 1.0))
+    val i2 = new Instance("2", Array(2.0, 2.0))
+    val i3 = new Instance("3", Array(3.0, 3.0))
+    val i4 = new Instance("4", Array(5.0, 5.0))
+    val i5 = new Instance("5", Array(1.9, 1.6))
+    val i6 = new Instance("6", Array(2.2, 2.4))
+    val i7 = new Instance("7", Array(6.4, 7.7))
 
     test("k less than 1"){
         val searchStrategy = new LAESA[Array[Double]](1)

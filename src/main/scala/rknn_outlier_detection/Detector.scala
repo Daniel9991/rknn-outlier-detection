@@ -21,32 +21,12 @@ class Detector[A](
     def detectOutliers(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A]): RDD[(String, String)] ={
 
         // Find kNeighbors
-
         val x = searchStrategy.findKNeighbors(instances, k, distanceFunction, sc)
 
         // Find reverse neighbors
-
         val y = ReverseNeighborsSearch.findReverseNeighbors(x)
 
-        // TODO analyze the need for this, as it adds extra complexity
-        // Get k neighbors and reverse neighbors into instances
-        val equippedInstances = instances.map(instance => (instance.id, instance))
-            .join(x)
-            .map(tuple => {
-                val (key, nestedTuple) = tuple
-                val (instance, kNeighbors) = nestedTuple
-                instance.kNeighbors = kNeighbors
-                (key, instance)
-            })
-            .join(y)
-            .map(tuple => {
-                val (key, nestedTuple) = tuple
-                val (instance, rNeighbors) = nestedTuple
-                instance.rNeighbors = rNeighbors
-                instance
-            })
-
-        val outlierScores = detectionStrategy.detectFromInstances(equippedInstances)
+        val outlierScores = detectionStrategy.detect(y)
         classificationStrategy.classify(outlierScores, normalLabel, outlierLabel)
     }
 }
