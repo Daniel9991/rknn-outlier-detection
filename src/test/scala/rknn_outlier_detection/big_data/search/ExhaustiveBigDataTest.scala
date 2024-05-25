@@ -2,7 +2,7 @@ package rknn_outlier_detection.big_data.search
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.funsuite.AnyFunSuite
-import rknn_outlier_detection.DistanceFunction
+import rknn_outlier_detection.{DistanceFunction, euclidean}
 import rknn_outlier_detection.big_data.search.reverse_knn.ReverseNeighborsSearch
 import rknn_outlier_detection.big_data.search.exhaustive_knn.ExhaustiveBigData
 import rknn_outlier_detection.exceptions.{IncorrectKValueException, InsufficientInstancesException}
@@ -45,8 +45,7 @@ class ExhaustiveBigDataTest extends AnyFunSuite {
     }
 
     val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2"))
-    val searchStrategy: ExhaustiveBigData.type = ExhaustiveBigData
-    val distFun: DistanceFunction = DistanceFunctions.euclidean
+    val searchStrategy = new ExhaustiveBigData[Array[Double]]()
 
     val i1 = new Instance("1", Array(1.0, 1.0), "")
     val i2 = new Instance("2", Array(2.0, 2.0), "")
@@ -57,33 +56,33 @@ class ExhaustiveBigDataTest extends AnyFunSuite {
     val i7 = new Instance("7", Array(6.4, 7.7), "")
 
     test("k less than 1"){
-        val testingData = sc.parallelize(Seq[Instance](i1, i2))
+        val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2))
         assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, 0, distFun, sc)
+            searchStrategy.findKNeighbors(testingData, 0, euclidean, sc)
         }
         assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, -1, distFun, sc)
+            searchStrategy.findKNeighbors(testingData, -1, euclidean, sc)
         }
     }
 
     test("instances amount is less than 2"){
-        val testingData1 = sc.parallelize(Seq[Instance]())
-        val testingData2 = sc.parallelize(Seq[Instance](i1))
+        val testingData1 = sc.parallelize(Seq[Instance[Array[Double]]]())
+        val testingData2 = sc.parallelize(Seq[Instance[Array[Double]]](i1))
         assertThrows[InsufficientInstancesException]{
-            searchStrategy.findKNeighbors(testingData1, 1, distFun, sc)
+            searchStrategy.findKNeighbors(testingData1, 1, euclidean, sc)
         }
         assertThrows[InsufficientInstancesException]{
-            searchStrategy.findKNeighbors(testingData2, 1, distFun, sc)
+            searchStrategy.findKNeighbors(testingData2, 1, euclidean, sc)
         }
     }
 
     test("k value is instances length"){
-        val testingData = sc.parallelize(Seq[Instance](i1, i2, i3, i4))
+        val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2, i3, i4))
         assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, 4, distFun, sc)
+            searchStrategy.findKNeighbors(testingData, 4, euclidean, sc)
         }
         assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, 5, distFun, sc)
+            searchStrategy.findKNeighbors(testingData, 5, euclidean, sc)
         }
     }
 
@@ -91,7 +90,7 @@ class ExhaustiveBigDataTest extends AnyFunSuite {
         val k = 6
         val testingData = sc.parallelize(Seq(i1, i2, i3, i4, i5, i6, i7))
 
-        val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, distFun, sc)
+        val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, euclidean, sc)
         val kNeighbors = kNeighborsRDD.collect()
 
         assert(kNeighbors.forall(pair => pair._2.length == k))

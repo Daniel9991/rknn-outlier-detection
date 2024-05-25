@@ -4,9 +4,9 @@ import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeigh
 
 import scala.collection.mutable.ArrayBuffer
 
-object ReverseNeighborsSmallData {
+class ReverseNeighborsSmallData[A] {
     def findReverseNeighborsFromInstance(
-        instancesWithKNeighbors: Array[Instance]
+        instancesWithKNeighbors: Array[Instance[A]]
     ): Array[Array[RNeighbor]] = {
 
         // Initialize empty arrays for reverse neighbors

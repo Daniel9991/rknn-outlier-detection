@@ -2,7 +2,6 @@ package rknn_outlier_detection.small_data.search.pivot_based
 
 import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.shared.custom_objects.Instance
-import rknn_outlier_detection.small_data.search.pivot_based.IncrementalSelection.findPivotSetDistanceDistributionMean
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
@@ -14,25 +13,25 @@ import scala.util.Random
 *
 * A greater amount of tuples in objectPairs (supposedly) yields better results than a greater candidate set
 */
-class IncrementalSelection (
-   candidatePivots: Array[Instance],
-   objectPairs: Array[(Instance, Instance)],
-) extends PivotSelector{
+class IncrementalSelection [A](
+   candidatePivots: Array[Instance[A]],
+   objectPairs: Array[(Instance[A], Instance[A])],
+) extends PivotSelector[A]{
 
     val random = new Random(345)
 
     override def findPivots(
-        instances: Array[Instance],
-        distanceFunction: DistanceFunction,
+        instances: Array[Instance[A]],
+        distanceFunction: DistanceFunction[A],
         pivotsAmount: Int
-    ): Array[Instance] = {
+    ): Array[Instance[A]] = {
 
         if(pivotsAmount >= candidatePivots.length){
             throw new Exception("The amount of pivots to select has to be less than the length of candidates set")
         }
 
         val candidates = ArrayBuffer.from(candidatePivots)
-        val pivots = new ArrayBuffer[Instance]()
+        val pivots = new ArrayBuffer[Instance[A]]()
 
         while(pivots.length < pivotsAmount){
 
@@ -54,9 +53,6 @@ class IncrementalSelection (
 
         pivots.toArray
     }
-}
-
-object IncrementalSelection {
 
     /**
      *
@@ -66,7 +62,7 @@ object IncrementalSelection {
      * @param distanceFunction distance function to be used
      * @return true if the first pivot set is better than the second one, false otherwise
      */
-    def findBestPivotSet(set1: Array[Instance], set2: Array[Instance], objectPairs: Array[(Instance, Instance)], distanceFunction: DistanceFunction): Boolean ={
+    def findBestPivotSet(set1: Array[Instance[A]], set2: Array[Instance[A]], objectPairs: Array[(Instance[A], Instance[A])], distanceFunction: DistanceFunction[A]): Boolean ={
 
         val meanDistanceDistribution1 = findPivotSetDistanceDistributionMean(set1, objectPairs,distanceFunction)
         val meanDistanceDistribution2 = findPivotSetDistanceDistributionMean(set2, objectPairs,distanceFunction)
@@ -74,7 +70,7 @@ object IncrementalSelection {
          meanDistanceDistribution1 > meanDistanceDistribution2
     }
 
-    def findPivotSetDistanceDistributionMean(pivots: Array[Instance], objectPairs: Array[(Instance, Instance)], distanceFunction: DistanceFunction): Double = {
+    def findPivotSetDistanceDistributionMean(pivots: Array[Instance[A]], objectPairs: Array[(Instance[A], Instance[A])], distanceFunction: DistanceFunction[A]): Double = {
         val maxDistances = objectPairs.map(pair => {
             val (obj1, obj2) = pair
             val obj1Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.attributes, obj1.attributes)))

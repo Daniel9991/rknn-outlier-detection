@@ -15,40 +15,46 @@ import rknn_outlier_detection.big_data.search.reverse_knn.ReverseNeighborsSearch
 object BigDataExperiment {
     def main(args: Array[String]): Unit = {
 
-        val k = args(0).toInt
+//        val k = args(0).toInt
+        val k = 100
 
-        val searchMethod = args(1)
-//        val searchMethod = "pknn"
+//        val searchMethod = args(1)
+        val searchMethod = "pknn"
         if(searchMethod != "exhaustive" && searchMethod != "pknn") throw new Exception(s"Unknown search strategy ${args(1)}")
 
-        val detectionMethod = args(2)
-//        val detectionMethod = "antihub"
+//        val detectionMethod = args(2)
+        val detectionMethod = "antihub"
         if(detectionMethod != "antihub" && detectionMethod != "ranked" && detectionMethod != "refined") throw new Exception(s"Unknown detection strategy ${args(2)}")
 
         val filepath = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection"
-        val datasetRelativePath = "datasets\\iris-synthetic-2.csv"
-        val rocFilename = s"$filepath\\rocs\\iris-synthetic-2_${k}_${searchMethod}_${detectionMethod}.csv"
+        val datasetRelativePath = "testingDatasets\\creditcardMinMaxScaled.csv"
+
+        val rocFilename = s"${System.getProperty("user.dir")}\\rocs\\creditcard_${k}_${searchMethod}_${detectionMethod}.csv"
         val datasetFilepath = s"${filepath}\\${datasetRelativePath}"
+//        val filepath = s"${System.getProperty("user.dir")}\\creditcardMinMaxScaled.csv"
 
         val before = System.nanoTime
 
-        val sc = new SparkContext(new SparkConf().setAppName("Sparking2"))
+//        val sc = new SparkContext(new SparkConf().setAppName("Sparking2"))
+        val sc = new SparkContext(new SparkConf().setMaster("local[*]").set("spark.default.parallelism", "16").setAppName("Sparking2"))
 
-//        val rawData = ReaderWriter.readCSV(datasetFilepath, hasHeader=false)
+//        val rawData = ReaderWriter.readCSV(filepath, hasHeader=false)
         val rawData = sc.textFile(datasetFilepath).map(line => line.split(","))
         val instances = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            val classification = if(line.last == "Iris-setosa") "1.0" else "0.0"
+            val classification = if(line.last == "1") "1.0" else "0.0"
             new Instance(index.toString, attributes, classification=classification)
         })
 
-//        val instances = sc.parallelize(instancesArray, 2)
+//        val instances = sc.parallelize(instancesArray)
+//        println(s"---------------There are ${instances.count} read by textFile--------------")
+//        sc.stop()
 //        instances.cache()
 //        val searchBefore = System.nanoTime
         val kNeighbors = searchMethod match {
-            case "pknn" => new PkNN(3).findKNeighbors(instances, k, distFun, sc)
-            case "exhaustive" =>  ExhaustiveBigData.findKNeighbors(instances, k, distFun, sc)
+            case "pknn" => new PkNN(280).findKNeighbors(instances, k, euclidean, sc)
+            case "exhaustive" =>  new ExhaustiveBigData().findKNeighbors(instances, k, euclidean, sc)
         }
 //        kNeighbors.cache()
 //        kNeighbors.count()
@@ -58,8 +64,8 @@ object BigDataExperiment {
 //        rNeighbors.count()
 //        val reverseAfter = System.nanoTime
         val detectionResult = detectionMethod match {
-            case "antihub" => Antihub.antihub(rNeighbors)
-            case "ranked" => RankedReverseCount.calculateAnomalyDegree(rNeighbors, k)
+            case "antihub" => new Antihub().antihub(rNeighbors)
+            case "ranked" => new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
             case "refined" => new AntihubRefined(new AntihubRefinedParams(0.2, 0.3)).antihubRefined(rNeighbors)
         }
 //        detectionResult.count()
@@ -86,7 +92,7 @@ object BigDataExperiment {
     }
 
     def saveStatistics(testId: String, auroc: Double, auprc: Double, time: String): Unit = {
-        val filename = s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\iris-synthetic-2-results.csv"
+        val filename = s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\creditcard-results.csv"
         val previousRecordsText = ReaderWriter.readCSV(filename, hasHeader=false).map(line => line.mkString(",")).mkString("\n")
         val updatedRecords = s"${previousRecordsText}\n$testId,$auroc,$auprc,$time"
         ReaderWriter.writeToFile(filename, updatedRecords)
@@ -102,7 +108,7 @@ object BigDataExperiment {
                 .setAppName("Sparking2"))
 
         val datasetFilename = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\datasets\\iris-synthetic-2.csv"
-        val distanceFunction = distFun
+        val distanceFunction = euclidean
 //        val k = 10
         val k = 20
 //        val k = 30
@@ -117,10 +123,10 @@ object BigDataExperiment {
         })
 
         val instances = sc.parallelize(instancesArray)
-        val kNeighbors = ExhaustiveBigData.findKNeighbors(instances, k, distanceFunction, sc)
+        val kNeighbors = new ExhaustiveBigData().findKNeighbors(instances, k, distanceFunction, sc)
         val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(kNeighbors)
 //        val detectionResult = Antihub.antihub(rNeighbors)
-        val detectionResult = RankedReverseCount.calculateAnomalyDegree(rNeighbors, k)
+        val detectionResult = new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
 
         val after = System.nanoTime
 
@@ -183,42 +189,42 @@ object BigDataExperiment {
 
         neighbors
     }
-        def findNeighborsForDataset(
-        datasetFilename: String,
-        savedResultsFilename: String,
-        hasHeader: Boolean,
-        k: Int,
-        distanceFunction: DistanceFunction,
-        sc: SparkContext
-    ): Unit = {
-
-        val rawData = ReaderWriter.readCSV(datasetFilename, hasHeader=hasHeader)
-        val instances = rawData.zipWithIndex.map(tuple => {
-            val (line, index) = tuple
-            val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            new Instance(index.toString, attributes, classification="")
-        })
-
-        val neighbors = ExhaustiveBigData.findKNeighbors(
-            sc.parallelize(instances),
-            k,
-            distanceFunction,
-            sc
-        )
-
-        val sortedResults = neighbors.collect().sortWith((tuple1, tuple2) => tuple1._1.toInt < tuple2._1.toInt)
-        val stringifiedNeighbors = sortedResults.map(tuple =>
-                s"${tuple._1},${tuple._2.map(neighbor => s"${neighbor.id};${neighbor.distance}").mkString(",")}"
-        )
-
-        println(sortedResults.map(_._1).mkString("Array(", ", ", ")"))
-
-        val toWrite = stringifiedNeighbors.mkString("\n")
-        ReaderWriter.writeToFile(
-            savedResultsFilename,
-            toWrite
-        )
-
-        println("Done saving results")
-    }
+//    def findNeighborsForDataset[A](
+//        datasetFilename: String,
+//        savedResultsFilename: String,
+//        hasHeader: Boolean,
+//        k: Int,
+//        distanceFunction: DistanceFunction[A],
+//        sc: SparkContext
+//    ): Unit = {
+//
+//        val rawData = ReaderWriter.readCSV(datasetFilename, hasHeader=hasHeader)
+//        val instances = rawData.zipWithIndex.map(tuple => {
+//            val (line, index) = tuple
+//            val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+//            new Instance[A](index.toString, attributes, classification="")
+//        })
+//
+//        val neighbors = new ExhaustiveBigData().findKNeighbors(
+//            sc.parallelize(instances),
+//            k,
+//            distanceFunction,
+//            sc
+//        )
+//
+//        val sortedResults = neighbors.collect().sortWith((tuple1, tuple2) => tuple1._1.toInt < tuple2._1.toInt)
+//        val stringifiedNeighbors = sortedResults.map(tuple =>
+//                s"${tuple._1},${tuple._2.map(neighbor => s"${neighbor.id};${neighbor.distance}").mkString(",")}"
+//        )
+//
+//        println(sortedResults.map(_._1).mkString("Array(", ", ", ")"))
+//
+//        val toWrite = stringifiedNeighbors.mkString("\n")
+//        ReaderWriter.writeToFile(
+//            savedResultsFilename,
+//            toWrite
+//        )
+//
+//        println("Done saving results")
+//    }
 }

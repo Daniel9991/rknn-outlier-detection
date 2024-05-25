@@ -8,19 +8,19 @@ import rknn_outlier_detection.shared.custom_objects.Instance
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
-class FarthestFirstTraversal(_objectSet: Array[Instance]) extends PivotSelector{
+class FarthestFirstTraversal[A](_objectSet: Array[Instance[A]]) extends PivotSelector[A]{
 
     val random = new Random(345)
 
     override def findPivots(
-                               instances: RDD[Instance],
+                               instances: RDD[Instance[A]],
                                pivotsAmount: Int,
-                               distanceFunction: DistanceFunction
-    ): Array[Instance] = {
+                               distanceFunction: DistanceFunction[A]
+    ): Array[Instance[A]] = {
 
         val objectSet = ArrayBuffer.from(_objectSet)
         val firstPivot = objectSet.remove(random.nextInt(objectSet.length))
-        val pivots = new ArrayBuffer[Instance]()
+        val pivots = new ArrayBuffer[Instance[A]]()
         pivots.append(firstPivot)
 
         while(pivots.length < pivotsAmount){

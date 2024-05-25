@@ -9,20 +9,20 @@ import rknn_outlier_detection.big_data.search.reverse_knn.ReverseNeighborsSearch
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 
-class Detector(
-  val searchStrategy: KNNSearchStrategy,
-  val detectionStrategy: DetectionStrategy,
+class Detector[A](
+  val searchStrategy: KNNSearchStrategy[A],
+  val detectionStrategy: DetectionStrategy[A],
   val classificationStrategy: ClassificationStrategy,
   val normalLabel: String,
   val outlierLabel: String,
   val sc: SparkContext
 ) {
 
-    def detectOutliers(instances: RDD[Instance], k: Integer): RDD[(String, String)] ={
+    def detectOutliers(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A]): RDD[(String, String)] ={
 
         // Find kNeighbors
 
-        val x = searchStrategy.findKNeighbors(instances, k, DistanceFunctions.euclidean, sc)
+        val x = searchStrategy.findKNeighbors(instances, k, distanceFunction, sc)
 
         // Find reverse neighbors
 
@@ -46,7 +46,7 @@ class Detector(
                 instance
             })
 
-        val outlierScores = detectionStrategy.detect(equippedInstances)
+        val outlierScores = detectionStrategy.detectFromInstances(equippedInstances)
         classificationStrategy.classify(outlierScores, normalLabel, outlierLabel)
     }
 }

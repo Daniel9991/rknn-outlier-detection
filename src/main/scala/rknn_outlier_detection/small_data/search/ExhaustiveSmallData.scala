@@ -1,16 +1,17 @@
 package rknn_outlier_detection.small_data.search
 
+import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 import rknn_outlier_detection.shared.utils.Utils
 
 import scala.collection.mutable.ArrayBuffer
 
-object ExhaustiveSmallData extends KNNSearchStrategy {
+class ExhaustiveSmallData[A] extends KNNSearchStrategy[A] {
 
     def findAllNeighbors(
-        instances: Array[Instance],
+        instances: Array[Instance[A]],
         k: Int,
-        distanceFunction: (Array[Double], Array[Double]) => Double
+        distanceFunction: DistanceFunction[A]
     ): (Array[Array[KNeighbor]], Array[Array[RNeighbor]]) = {
 
         val kNeighbors = findKNeighbors(instances, k, distanceFunction)
@@ -29,15 +30,15 @@ object ExhaustiveSmallData extends KNNSearchStrategy {
             newInstance
         })
 
-        val reverseNeighbors = ReverseNeighborsSmallData.findReverseNeighborsFromInstance(instancesWithKNeighbors)
+        val reverseNeighbors = new ReverseNeighborsSmallData().findReverseNeighborsFromInstance(instancesWithKNeighbors)
 
         (kNeighbors, reverseNeighbors)
     }
 
     def findKNeighbors(
-        instances: Array[Instance],
+        instances: Array[Instance[A]],
         k: Int,
-        distanceFunction: (Array[Double], Array[Double]) => Double
+        distanceFunction: DistanceFunction[A]
     ): Array[Array[KNeighbor]] = {
 
         val kNeighbors = instances.map(query => findQueryKNeighbors(query, instances, k, distanceFunction))
@@ -46,10 +47,10 @@ object ExhaustiveSmallData extends KNNSearchStrategy {
     }
 
     def findQueryKNeighbors(
-        query: Instance,
-        dataset: Array[Instance],
+        query: Instance[A],
+        dataset: Array[Instance[A]],
         k: Int,
-        distanceFunction: (Array[Double], Array[Double]) => Double
+        distanceFunction: DistanceFunction[A]
     ): Array[KNeighbor] = {
 
         val kNeighbors = Array.fill[KNeighbor](k)(null)

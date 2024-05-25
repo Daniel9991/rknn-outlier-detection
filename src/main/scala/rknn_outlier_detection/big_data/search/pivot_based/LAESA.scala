@@ -9,11 +9,11 @@ import rknn_outlier_detection.shared.custom_objects.{DistanceObject, Instance, K
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.Utils
 
-class LAESA (
+class LAESA[A] (
     pivotsAmount: Int,
-) extends KNNSearchStrategy{
+) extends KNNSearchStrategy[A]{
 
-    def findBasePivots(instances: RDD[Instance], sc: SparkContext): RDD[Instance] = {
+    def findBasePivots(instances: RDD[Instance[A]], sc: SparkContext): RDD[Instance[A]] = {
         sc.parallelize(instances.takeSample(withReplacement=false, num=pivotsAmount, seed=1))
     }
 
@@ -26,9 +26,9 @@ class LAESA (
      *         each instance with its array of neighbors
      */
     override def findKNeighbors(
-    instances: RDD[Instance],
+    instances: RDD[Instance[A]],
     k: Int,
-    distanceFunction: DistanceFunction,
+    distanceFunction: DistanceFunction[A],
     sc: SparkContext
     ): RDD[(String, Array[KNeighbor])] = {
 
@@ -102,11 +102,11 @@ class LAESA (
             instancesWithCotas.filter(t => !basePivotsIds.contains(t._1.id)).foreach(pair => {
                 val (instance, cota) = pair
                 if(kNeighbors.contains(null)){
-                    Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, DistanceFunctions.euclidean(query.attributes, instance.attributes)))
+                    Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distanceFunction(query.attributes, instance.attributes)))
                 }
                 else{
                     if(cota <= kNeighbors.last.distance){
-                        val distance = DistanceFunctions.euclidean(query.attributes, instance.attributes)
+                        val distance = distanceFunction(query.attributes, instance.attributes)
                         if(distance < kNeighbors.last.distance){
                             Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distance))
                         }

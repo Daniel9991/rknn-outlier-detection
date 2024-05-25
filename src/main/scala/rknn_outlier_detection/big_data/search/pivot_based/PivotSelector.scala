@@ -4,10 +4,10 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.shared.custom_objects.Instance
 
-trait PivotSelector {
+trait PivotSelector[A] {
     def findPivots(
-                      instances: RDD[Instance],
+                      instances: RDD[Instance[A]],
                       pivotsAmount: Int,
-                      distanceFunction: DistanceFunction
-    ): Array[Instance]
+                      distanceFunction: DistanceFunction[A]
+    ): Array[Instance[A]]
 }

@@ -1,8 +1,8 @@
 package rknn_outlier_detection.small_data.detection
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
-object RankedReverseCount extends DetectionCriteria {
-    override def scoreInstancesFromInstances(instances: Array[Instance]): Array[Double] = {
+class RankedReverseCount[A] extends DetectionCriteria[A] {
+    override def scoreInstancesFromInstances(instances: Array[Instance[A]]): Array[Double] = {
         scoreInstances(instances.map(_.kNeighbors), instances.map(_.rNeighbors))
     }
 

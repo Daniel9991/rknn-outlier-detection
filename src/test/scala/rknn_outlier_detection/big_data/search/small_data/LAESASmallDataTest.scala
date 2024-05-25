@@ -1,7 +1,7 @@
 package rknn_outlier_detection.big_data.search.small_data
 
 import org.scalatest.funsuite.AnyFunSuite
-import rknn_outlier_detection.DistanceFunction
+import rknn_outlier_detection.{DistanceFunction, euclidean}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.ReaderWriter
@@ -49,12 +49,10 @@ class LAESASmallDataTest extends AnyFunSuite {
     val i6 = new Instance("6", Array(1.9, 1.9), "")
     val i7 = new Instance("7", Array(2.2, 2.2), "")
 
-    val distFun: DistanceFunction = DistanceFunctions.euclidean
-
     test("Empty result"){
-        val LAESAConfig = new LAESA(1)
-        val testingData = Array[Instance]()
-        val result = LAESAConfig.findAllKNeighbors(testingData, 3, distanceFunction = distFun)
+        val LAESAConfig = new LAESA[Array[Double]](1)
+        val testingData = Array[Instance[Array[Double]]]()
+        val result = LAESAConfig.findAllKNeighbors(testingData, 3, distanceFunction = euclidean)
         assert(result.isEmpty)
     }
 
@@ -65,11 +63,11 @@ class LAESASmallDataTest extends AnyFunSuite {
     // }
 
     test("(Dummy) General knn"){
-        val LAESAConfig = new LAESA(1)
+        val LAESAConfig = new LAESA[Array[Double]](1)
         val k = 3
         val testingData = Array(i1, i2, i3, i4, i5)
 
-        val kNeighbors = LAESAConfig.findAllKNeighbors(testingData, k, distanceFunction = distFun)
+        val kNeighbors = LAESAConfig.findAllKNeighbors(testingData, k, distanceFunction = euclidean)
 
         // instance 1
 //        println(kNeighbors.map(neighbors => neighbors.map(n => if(n != null)  n.id else null).mkString("[", ", ", "]")).mkString("[\n\t", "\n\t", "\n]"))
@@ -92,7 +90,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     }
 
     test("(Iris) General original knn"){
-        val LAESAConfig = new LAESA(5)
+        val LAESAConfig = new LAESA[Array[Double]](5)
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects
@@ -104,8 +102,8 @@ class LAESASmallDataTest extends AnyFunSuite {
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val (exhaustiveKNeighbors, _) = ExhaustiveSmallData.findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
-        val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, distanceFunction = distFun)
+        val (exhaustiveKNeighbors, _) = new ExhaustiveSmallData().findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, distanceFunction = euclidean)
 
         val mixedExhaustiveAndLAESAKNeighbors = exhaustiveKNeighbors.zip(laesaKNeighbors)
 
@@ -124,7 +122,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     }
 
     test("(Iris) General custom knn"){
-        val LAESAConfig = new LAESA(10)
+        val LAESAConfig = new LAESA[Array[Double]](10)
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects
@@ -136,8 +134,8 @@ class LAESASmallDataTest extends AnyFunSuite {
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val (exhaustiveKNeighbors, _) = ExhaustiveSmallData.findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
-        val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, custom = true, distanceFunction = distFun)
+        val (exhaustiveKNeighbors, _) = new ExhaustiveSmallData().findAllNeighbors(baseInstances, k, DistanceFunctions.euclidean)
+        val laesaKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, custom = true, distanceFunction = euclidean)
 
         val mixedExhaustiveAndLAESAKNeighbors = exhaustiveKNeighbors.zip(laesaKNeighbors)
 
@@ -148,7 +146,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     }
 
     test("(Iris) LAESA original vs custom"){
-        val LAESAConfig = new LAESA(20)
+        val LAESAConfig = new LAESA[Array[Double]](20)
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects
@@ -160,8 +158,8 @@ class LAESASmallDataTest extends AnyFunSuite {
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
-        val customKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, custom = true, distanceFunction = distFun)
-        val originalKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, distanceFunction = distFun)
+        val customKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, custom = true, distanceFunction = euclidean)
+        val originalKNeighbors = LAESAConfig.findAllKNeighbors(baseInstances, k, distanceFunction = euclidean)
 
         val mixedCustomAndOriginalKNeighbors = customKNeighbors.zip(originalKNeighbors)
 

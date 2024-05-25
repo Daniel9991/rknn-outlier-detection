@@ -1,6 +1,6 @@
 package rknn_outlier_detection.shared.custom_objects
 
-class Instance(val id: String, val attributes: Array[Double], val classification: String) extends Serializable{
+class Instance[A](val id: String, val attributes: A, val classification: String) extends Serializable{
 
   var kNeighbors: Array[KNeighbor] = null
   var rNeighbors: Array[RNeighbor] = null

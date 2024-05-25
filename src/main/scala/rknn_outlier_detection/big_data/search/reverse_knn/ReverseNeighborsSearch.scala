@@ -20,12 +20,12 @@ object ReverseNeighborsSearch {
 
         val neighborReferences = instancesWithNeighbors.flatMap(tuple => {
             val (instanceId, neighbors) = tuple
-            neighbors.map(neighbor => (neighbor.id, instanceId))
+            neighbors.zipWithIndex.map(tuple => (tuple._1.id, (instanceId, tuple._2)))
         })
 
         val y = neighborReferences.groupByKey()
             .mapValues(rNeighbors => rNeighbors.map(
-                rNeighbor => new RNeighbor(rNeighbor, 0)
+                rNeighbor => new RNeighbor(rNeighbor._1, rNeighbor._2)
             ).toArray)
 
         // Dealing with instances that don't have reverse neighbors and don't come

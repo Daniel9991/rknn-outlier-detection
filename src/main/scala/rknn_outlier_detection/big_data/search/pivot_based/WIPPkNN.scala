@@ -13,9 +13,9 @@ import rknn_outlier_detection.small_data.search.ExhaustiveSmallData
 * on the following paper. https://link.springer.com/chapter/10.1007/978-3-319-71246-8_51
 */
 
-class WIPPkNN(
+class WIPPkNN [A](
               pivotsAmount: Int,
-          ) extends KNNSearchStrategy {
+          ) extends KNNSearchStrategy[A] {
 
     // initial n pivots are chosen
     // how to choose the pivots???
@@ -34,7 +34,7 @@ class WIPPkNN(
     // rest between the distance (|vi, q| - |vj, q|)/2 >= core-distance(vi)
     // 6. remove outliers to balance nodes and support sets
 
-    override def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+    override def findKNeighbors(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A], sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
 
         val pivots = findBasePivots(instances, sc)
 
@@ -53,7 +53,7 @@ class WIPPkNN(
         // Step 1
         val coreKNNs = cells.mapValues(iterable => {
             // Assuming that an array of instances fits into memory??? Maybe used distributed version???
-            val knns = ExhaustiveSmallData.findKNeighbors(iterable.map(_._1).toArray, k, distanceFunction)
+            val knns = new ExhaustiveSmallData().findKNeighbors(iterable.map(_._1).toArray, k, distanceFunction)
             iterable.zip(knns).map(tuple => {
                 val (secondTuple, kNeighbors) = tuple
                 val (instance, distanceToPivot) = secondTuple
@@ -170,7 +170,7 @@ class WIPPkNN(
         finalKNNs
     }
 
-    def findBasePivots(instances: RDD[Instance], sc: SparkContext): RDD[Instance] = {
+    def findBasePivots(instances: RDD[Instance[A]], sc: SparkContext): RDD[Instance[A]] = {
         if(instances.count() == 0)
             return sc.parallelize(Seq())
 

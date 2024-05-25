@@ -14,19 +14,18 @@ import scala.util.Random
  *
  * A greater amount of tuples in objectPairs (supposedly) yields better results than a greater candidate set
  */
-class IncrementalSelection (
+class IncrementalSelection[A] (
    candidatesAmount: Int,
    objectPairsAmount: Int,
-   amountOfPivotSets: Int
-) extends PivotSelector{
+) extends PivotSelector[A] with Serializable{
 
     val random = new Random(345)
 
     override def findPivots(
-       instances: RDD[Instance],
+       instances: RDD[Instance[A]],
        pivotsAmount: Int,
-       distanceFunction: DistanceFunction
-   ): Array[Instance] = {
+       distanceFunction: DistanceFunction[A]
+   ): Array[Instance[A]] = {
 
         val instancesAmount = instances.count()
 
@@ -52,10 +51,37 @@ class IncrementalSelection (
         })
 
         val finalPivotSet = pivotSets.reduce(
-            (set1, set2) => if(rknn_outlier_detection.small_data.search.pivot_based.IncrementalSelection.findBestPivotSet(set1, set2, objectPairs, distanceFunction)) set1 else set2
+            (set1, set2) => if(findBestPivotSet(set1, set2, objectPairs, distanceFunction)) set1 else set2
         )
 
         finalPivotSet
+    }
+
+    def findBestPivotSet(set1: Array[Instance[A]], set2: Array[Instance[A]], objectPairs: Array[(Instance[A], Instance[A])], distanceFunction: DistanceFunction[A]): Boolean ={
+
+        val meanDistanceDistribution1 = findPivotSetDistanceDistributionMean(set1, objectPairs,distanceFunction)
+        val meanDistanceDistribution2 = findPivotSetDistanceDistributionMean(set2, objectPairs,distanceFunction)
+
+        meanDistanceDistribution1 > meanDistanceDistribution2
+    }
+
+    def findPivotSetDistanceDistributionMean(pivots: Array[Instance[A]], objectPairs: Array[(Instance[A], Instance[A])], distanceFunction: DistanceFunction[A]): Double = {
+        val maxDistances = objectPairs.map(pair => {
+            val (obj1, obj2) = pair
+            val obj1Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.attributes, obj1.attributes)))
+            val obj2Mapping = pivots.map(pivot => (pivot, distanceFunction(pivot.attributes, obj2.attributes)))
+            val maxDistance = obj1Mapping.zip(obj2Mapping).map(tuple => {
+                if(tuple._1._1.id != tuple._2._1.id){
+                    throw new Exception("Pivots ids are not the same")
+                }
+
+                math.abs(tuple._1._2 - tuple._2._2)
+            }).max
+
+            maxDistance
+        })
+
+        maxDistances.sum / maxDistances.length.toDouble
     }
 }
 
