@@ -6,12 +6,12 @@ import rknn_outlier_detection.shared.utils.Utils
 
 import scala.collection.mutable.ArrayBuffer
 
-class ExhaustiveSmallData[A] extends KNNSearchStrategy[A] {
+class ExhaustiveSmallData {
 
     def findKNeighbors(
-        instances: Array[Instance[A]],
+        instances: Array[Instance],
         k: Int,
-        distanceFunction: DistanceFunction[A]
+        distanceFunction: DistanceFunction
     ): Array[Array[KNeighbor]] = {
 
         val kNeighbors = instances.map(query => findQueryKNeighbors(query, instances, k, distanceFunction))
@@ -20,10 +20,10 @@ class ExhaustiveSmallData[A] extends KNNSearchStrategy[A] {
     }
 
     def findQueryKNeighbors(
-        query: Instance[A],
-        dataset: Array[Instance[A]],
+        query: Instance,
+        dataset: Array[Instance],
         k: Int,
-        distanceFunction: DistanceFunction[A]
+        distanceFunction: DistanceFunction
     ): Array[KNeighbor] = {
 
         val kNeighbors = Array.fill[KNeighbor](k)(null)

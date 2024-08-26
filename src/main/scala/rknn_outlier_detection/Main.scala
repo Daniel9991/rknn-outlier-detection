@@ -15,15 +15,20 @@ object Main {
     def main(args: Array[String]): Unit ={
 
         println("Hi, mom!")
-        val rdd = sc.parallelize(Seq(1,2,3,4,5))
-        val pivotsAmount = 4
-        val pivots = new ArrayBuffer[Int]()
-        var count = 0
-        while(pivots.length < pivotsAmount){
-            pivots.addAll(rdd.take(count))
-            count += 1
-        }
-        println(pivots)
+//        val rdd = sc.parallelize(Seq(1,2,3,4,5))
+//        val pivotsAmount = 4
+//        val pivots = new ArrayBuffer[Int]()
+//        var count = 0
+//        while(pivots.length < pivotsAmount){
+//            pivots.addAll(rdd.take(count))
+//            count += 1
+//        }
+//        println(pivots)
+
+        val rdd1 = sc.parallelize(Seq(("A", 1), ("A", 28), ("B", 2), ("B", 3)))
+        val rdd2 = sc.parallelize(Seq(("A", 4), ("A", 9), ("B", 5), ("D", 6)))
+        val result = rdd1.join(rdd1)
+        result.foreach(combo => println(s"${combo._2}"))
 //        println(s"The rdd has ${rdd.count()} elements")
 //         val i1 = new Instance("1", Array(1.0, 1.0), "")
 //         val i2 = new Instance("2", Array(2.0, 2.0), "")

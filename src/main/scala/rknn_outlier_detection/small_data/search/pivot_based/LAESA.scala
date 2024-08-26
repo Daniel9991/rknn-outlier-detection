@@ -7,7 +7,7 @@ import rknn_outlier_detection.small_data.search.KNNSearchStrategy
 
 import scala.util.Random
 
-class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
+class LAESA(val pivotsAmount: Int) extends KNNSearchStrategy{
 
     val SEED = 35612345
     val r = new Random(SEED)
@@ -15,13 +15,13 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
 //    def findPivotsAmount(totalAmount: Int): Int =
 //        (totalAmount * pivotsPercentage).toInt
 
-    def findPivots(instances: Array[Instance[A]], pivotsAmount: Int): Array[Instance[A]] = {
+    def findPivots(instances: Array[Instance], pivotsAmount: Int): Array[Instance] = {
         r.shuffle(instances.toList).take(pivotsAmount).toArray
 
 //        Array(instances(0), instances(146), instances(147), instances(148), instances(149))
     }
 
-    def findAllKNeighbors(instances: Array[Instance[A]], k: Int, custom: Boolean = false, distanceFunction: DistanceFunction[A]): Array[Array[KNeighbor]] ={
+    def findAllKNeighbors(instances: Array[Instance], k: Int, custom: Boolean = false, distanceFunction: DistanceFunction): Array[Array[KNeighbor]] ={
 
         // val pivotsAmount = findPivotsAmount(instances.length)
         val pivots = findPivots(instances, pivotsAmount)
@@ -34,7 +34,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
         closestNeighborForAll
     }
 
-    def findAllKNeighborsForBenchmark(instances: Array[Instance[A]], k: Int, distanceFunction: DistanceFunction[A], custom: Boolean = false): (Array[Array[KNeighbor]], Int, Int) ={
+    def findAllKNeighborsForBenchmark(instances: Array[Instance], k: Int, distanceFunction: DistanceFunction, custom: Boolean = false): (Array[Array[KNeighbor]], Int, Int) ={
 
         // val pivotsAmount = findPivotsAmount(instances.length)
         val pivots = findPivots(instances, pivotsAmount)
@@ -53,11 +53,11 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
     }
 
     def findKNeighborsOriginal(
-        query: Instance[A],
-        instances: Array[Instance[A]],
-        pivots: Array[Instance[A]],
+        query: Instance,
+        instances: Array[Instance],
+        pivots: Array[Instance],
         distances: Array[Array[Double]],
-        distanceFunction: DistanceFunction[A],
+        distanceFunction: DistanceFunction,
         k: Int,
     ): Array[KNeighbor] = {
 
@@ -93,9 +93,9 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
                 }
             }
 
-            var sigB: Instance[A] = null
+            var sigB: Instance = null
             var gB = Double.PositiveInfinity
-            var sig: Instance[A] = null
+            var sig: Instance = null
             var g = Double.PositiveInfinity
 
             for(i <- instances.indices){
@@ -146,12 +146,12 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
     }
 
     def findKNeighborsCustom(
-        query: Instance[A],
-        instances: Array[Instance[A]],
-        pivots: Array[Instance[A]],
+        query: Instance,
+        instances: Array[Instance],
+        pivots: Array[Instance],
         distances: Array[Array[Double]],
         k: Int,
-        distanceFunction: DistanceFunction[A]
+        distanceFunction: DistanceFunction
     ): Array[KNeighbor] = {
 
         //        println(s"Query is: ${query.id}")
@@ -189,9 +189,9 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
                 }
             }
 
-            var sigB: Instance[A] = null
+            var sigB: Instance = null
             var gB = Double.PositiveInfinity
-            var sig: Instance[A] = null
+            var sig: Instance = null
             var g = Double.PositiveInfinity
 
             for(i <- instances.indices){
@@ -258,11 +258,11 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
     }
 
     def findKNeighborsForBenchmark(
-        query: Instance[A],
-        instances: Array[Instance[A]],
-        pivots: Array[Instance[A]],
+        query: Instance,
+        instances: Array[Instance],
+        pivots: Array[Instance],
         distances: Array[Array[Double]],
-        distanceFunction: DistanceFunction[A],
+        distanceFunction: DistanceFunction,
         k: Int,
     ): (Array[KNeighbor], Int, Int) = {
 
@@ -302,9 +302,9 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
                 }
             }
 
-            var sigB: Instance[A] = null
+            var sigB: Instance = null
             var gB = Double.PositiveInfinity
-            var sig: Instance[A] = null
+            var sig: Instance = null
             var g = Double.PositiveInfinity
 
             for(i <- instances.indices){
@@ -357,11 +357,11 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
     }
 
     def findKNeighborsCustomForBenchmark(
-        query: Instance[A],
-        instances: Array[Instance[A]],
-        pivots: Array[Instance[A]],
+        query: Instance,
+        instances: Array[Instance],
+        pivots: Array[Instance],
         distances: Array[Array[Double]],
-        distanceFunction: DistanceFunction[A],
+        distanceFunction: DistanceFunction,
         k: Int,
     ): (Array[KNeighbor], Int, Int) = {
 
@@ -403,9 +403,9 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
                 }
             }
 
-            var sigB: Instance[A] = null
+            var sigB: Instance = null
             var gB = Double.PositiveInfinity
-            var sig: Instance[A] = null
+            var sig: Instance = null
             var g = Double.PositiveInfinity
 
             for(i <- instances.indices){
@@ -513,7 +513,7 @@ class LAESA[A](val pivotsAmount: Int) extends KNNSearchStrategy[A] {
         }
     }
 
-    override def findKNeighbors(instances: Array[Instance[A]], k: Int, distanceFunction: DistanceFunction[A]): Array[Array[KNeighbor]] = {
+    override def findKNeighbors(instances: Array[Instance], k: Int, distanceFunction: DistanceFunction): Array[Array[KNeighbor]] = {
         findAllKNeighbors(instances, k, custom = true, distanceFunction)
     }
 }

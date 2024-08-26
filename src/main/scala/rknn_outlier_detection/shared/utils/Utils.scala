@@ -2,8 +2,9 @@ package rknn_outlier_detection.shared.utils
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import rknn_outlier_detection.shared.custom_objects.KNeighbor
+import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
 object Utils {
@@ -89,5 +90,30 @@ object Utils {
             currentIndex -= 1
             kNeighbors(currentIndex) = newNeighbor
         }
+    }
+
+    def addCandidateSupportPivot(
+                          candidatePivots: ArrayBuffer[(Instance, Double, Int, Int)],
+                          newPivot: (Instance, Double, Int, Int)
+                      ): ArrayBuffer[(Instance, Double, Int, Int)] = {
+
+
+        candidatePivots.addOne(newPivot)
+        var currentIndex: Int = candidatePivots.length - 1
+
+        while (
+            newPivot._1.id != candidatePivots.head._1.id &&
+                newPivot._2 < candidatePivots(currentIndex - 1)._2
+        ) {
+            candidatePivots(currentIndex) = candidatePivots(currentIndex - 1)
+            currentIndex -= 1
+            candidatePivots(currentIndex) = newPivot
+        }
+
+        candidatePivots
+    }
+
+    def getKeyFromInstancesIds(id1: String, id2: String): String = {
+        if(id1 < id2) s"${id1}_${id2}" else s"${id2}_${id1}"
     }
 }

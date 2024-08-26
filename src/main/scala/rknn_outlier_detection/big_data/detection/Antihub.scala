@@ -2,7 +2,7 @@ package rknn_outlier_detection.big_data.detection
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.shared.custom_objects.{Instance, RNeighbor}
 
-class Antihub[A] extends DetectionStrategy[A] with Serializable {
+class Antihub extends DetectionStrategy with Serializable {
 
     private def normalizeReverseNeighborsCount(count: Int): Double = {
         if(count == 0)

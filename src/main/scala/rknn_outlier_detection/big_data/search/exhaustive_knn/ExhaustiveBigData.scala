@@ -10,7 +10,7 @@ import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.Utils
 import rknn_outlier_detection.shared.utils.Utils.sortNeighbors
 
-class ExhaustiveBigData[A] extends KNNSearchStrategy[A] {
+class ExhaustiveBigData extends KNNSearchStrategy {
 
     /**
      * Find k neighbors by using the cartesian product to get all
@@ -29,7 +29,7 @@ class ExhaustiveBigData[A] extends KNNSearchStrategy[A] {
      * @return RDD containing a tuple for
      *         each instance with its array of neighbors
      */
-    def findKNeighborsMappingAllToKNeighbors(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A]): RDD[(String, Array[KNeighbor])]={
+    def findKNeighborsMappingAllToKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction): RDD[(String, Array[KNeighbor])]={
 
         val fullyMappedInstances = instances.cartesian(instances)
             .filter(instances_tuple => instances_tuple._1.id != instances_tuple._2.id)
@@ -72,7 +72,7 @@ class ExhaustiveBigData[A] extends KNNSearchStrategy[A] {
      * @return RDD containing a tuple for
      *         each instance with its array of neighbors
      */
-    def findKNeighborsAggregatingPairs(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A]): RDD[(String, Array[KNeighbor])]={
+    def findKNeighborsAggregatingPairs(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction): RDD[(String, Array[KNeighbor])]={
 
         val fullyMappedInstances = instances.cartesian(instances)
             .filter(instances_tuple => instances_tuple._1.id != instances_tuple._2.id)
@@ -110,7 +110,7 @@ class ExhaustiveBigData[A] extends KNNSearchStrategy[A] {
         x
     }
 
-    override def findKNeighbors(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A], sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+    override def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
         val instancesAmount = instances.count()
         if(instancesAmount < 2) throw new InsufficientInstancesException("Received less than 2 instances, not enough for a neighbors search.")
         if(k <= 1 || k > instancesAmount - 1) throw new IncorrectKValueException("k has to be a natural number between 1 and n - 1 (n is instances length)")

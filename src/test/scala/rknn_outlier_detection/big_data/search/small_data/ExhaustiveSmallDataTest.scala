@@ -17,7 +17,7 @@ class ExhaustiveSmallDataTest extends AnyFunSuite {
     val i7 = new Instance("7", Array(2.2, 2.2))
 
     test("Empty RDD"){
-        val testingData = Array[Instance[Array[Double]]]()
+        val testingData = Array[Instance]()
         val result = new ExhaustiveSmallData().findKNeighbors(testingData, 1, DistanceFunctions.euclidean)
         assert(result.isEmpty)
     }

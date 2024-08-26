@@ -55,8 +55,8 @@ class LAESATest extends AnyFunSuite {
     val i7 = new Instance("7", Array(6.4, 7.7))
 
     test("k less than 1"){
-        val searchStrategy = new LAESA[Array[Double]](1)
-        val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2))
+        val searchStrategy = new LAESA(1)
+        val testingData = sc.parallelize(Seq[Instance](i1, i2))
         assertThrows[IncorrectKValueException]{
             searchStrategy.findKNeighbors(testingData, 0, euclidean, sc)
         }
@@ -66,9 +66,9 @@ class LAESATest extends AnyFunSuite {
     }
 
     test("instances amount is less than 2"){
-        val searchStrategy = new LAESA[Array[Double]](1)
-        val testingData1 = sc.parallelize(Seq[Instance[Array[Double]]]())
-        val testingData2 = sc.parallelize(Seq[Instance[Array[Double]]](i1))
+        val searchStrategy = new LAESA(1)
+        val testingData1 = sc.parallelize(Seq[Instance]())
+        val testingData2 = sc.parallelize(Seq[Instance](i1))
         assertThrows[InsufficientInstancesException]{
             searchStrategy.findKNeighbors(testingData1, 1, euclidean, sc)
         }
@@ -78,8 +78,8 @@ class LAESATest extends AnyFunSuite {
     }
 
     test("k value is instances length"){
-        val searchStrategy = new LAESA[Array[Double]](1)
-        val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2, i3, i4))
+        val searchStrategy = new LAESA(1)
+        val testingData = sc.parallelize(Seq[Instance](i1, i2, i3, i4))
         assertThrows[IncorrectKValueException]{
             searchStrategy.findKNeighbors(testingData, 4, euclidean, sc)
         }
@@ -89,7 +89,7 @@ class LAESATest extends AnyFunSuite {
     }
 
     test("knn results"){
-        val searchStrategy = new LAESA[Array[Double]](2)
+        val searchStrategy = new LAESA(2)
         val k = 6
         val testingData = sc.parallelize(Seq(i1, i2, i3, i4, i5, i6, i7), 2)
 

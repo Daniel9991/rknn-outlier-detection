@@ -9,11 +9,11 @@ import rknn_outlier_detection.shared.custom_objects.{DistanceObject, Instance, K
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.Utils
 
-class LAESA[A] (
+class LAESA (
     pivotsAmount: Int,
-) extends KNNSearchStrategy[A]{
+) extends KNNSearchStrategy{
 
-    def findBasePivots(instances: RDD[Instance[A]], sc: SparkContext): RDD[Instance[A]] = {
+    def findBasePivots(instances: RDD[Instance], sc: SparkContext): RDD[Instance] = {
         sc.parallelize(instances.takeSample(withReplacement=false, num=pivotsAmount, seed=1))
     }
 
@@ -26,9 +26,9 @@ class LAESA[A] (
      *         each instance with its array of neighbors
      */
     override def findKNeighbors(
-    instances: RDD[Instance[A]],
+    instances: RDD[Instance],
     k: Int,
-    distanceFunction: DistanceFunction[A],
+    distanceFunction: DistanceFunction,
     sc: SparkContext
     ): RDD[(String, Array[KNeighbor])] = {
 

@@ -5,6 +5,6 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.DistanceFunction
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 
-trait KNNSearchStrategy [A]{
-    def findKNeighbors(instances: RDD[Instance[A]], k: Int, distanceFunction: DistanceFunction[A], sc: SparkContext): RDD[(String, Array[KNeighbor])]
+trait KNNSearchStrategy {
+    def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])]
 }

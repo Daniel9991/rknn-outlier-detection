@@ -2,7 +2,7 @@ package rknn_outlier_detection.small_data.detection
 
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
-class Antihub[A] extends DetectionCriteria[A] {
+class Antihub extends DetectionCriteria {
 
     def normalizeReverseNeighborsCount(count: Int): Double = {
         if (count == 0)

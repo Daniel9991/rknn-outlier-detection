@@ -3,7 +3,7 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.big_data.detection.AntihubRefined.addSmallerScore
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
-class AntihubRefined[A](params: AntihubRefinedParams) extends DetectionStrategy[A] {
+class AntihubRefined(params: AntihubRefinedParams) extends DetectionStrategy {
 
     private def discScore(scores: RDD[Double], ratio: Double): Double ={
 

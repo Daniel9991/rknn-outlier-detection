@@ -50,8 +50,8 @@ class LAESASmallDataTest extends AnyFunSuite {
     val i7 = new Instance("7", Array(2.2, 2.2))
 
     test("Empty result"){
-        val LAESAConfig = new LAESA[Array[Double]](1)
-        val testingData = Array[Instance[Array[Double]]]()
+        val LAESAConfig = new LAESA(1)
+        val testingData = Array[Instance]()
         val result = LAESAConfig.findAllKNeighbors(testingData, 3, distanceFunction = euclidean)
         assert(result.isEmpty)
     }
@@ -63,7 +63,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     // }
 
     test("(Dummy) General knn"){
-        val LAESAConfig = new LAESA[Array[Double]](1)
+        val LAESAConfig = new LAESA(1)
         val k = 3
         val testingData = Array(i1, i2, i3, i4, i5)
 
@@ -90,7 +90,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     }
 
     test("(Iris) General original knn"){
-        val LAESAConfig = new LAESA[Array[Double]](5)
+        val LAESAConfig = new LAESA(5)
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects
@@ -122,7 +122,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     }
 
     test("(Iris) General custom knn"){
-        val LAESAConfig = new LAESA[Array[Double]](10)
+        val LAESAConfig = new LAESA(10)
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects
@@ -146,7 +146,7 @@ class LAESASmallDataTest extends AnyFunSuite {
     }
 
     test("(Iris) LAESA original vs custom"){
-        val LAESAConfig = new LAESA[Array[Double]](20)
+        val LAESAConfig = new LAESA(20)
         val k = 10
 
         // Read rows from csv file and convert them to Instance objects

@@ -1,6 +1,6 @@
 package rknn_outlier_detection.shared.custom_objects
 
-class Instance[A](val id: String, val data: A) extends Serializable{
+class Instance(val id: String, val data: Array[Double]) extends Serializable{
 
   override def hashCode: Int = this.id.toInt
 

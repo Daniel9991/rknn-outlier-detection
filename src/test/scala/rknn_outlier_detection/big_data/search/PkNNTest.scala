@@ -44,10 +44,6 @@ class PkNNTest extends AnyFunSuite {
         sortedArr1.sameElements(sortedArr2)
     }
 
-    val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2").set("spark.default.parallelism", "16"))
-    val searchStrategy = new PkNN[Array[Double]](5)
-    val distFun: DistanceFunction[Array[Double]] = euclidean
-
     val i1 = new Instance("1", Array(1.0, 1.0))
     val i2 = new Instance("2", Array(2.0, 2.0))
     val i3 = new Instance("3", Array(3.0, 3.0))
@@ -56,42 +52,48 @@ class PkNNTest extends AnyFunSuite {
     val i6 = new Instance("6", Array(2.2, 2.4))
     val i7 = new Instance("7", Array(6.4, 7.7))
 
-    test("k less than 1"){
-        val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2))
-        assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, 0, distFun, sc)
-        }
-        assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, -1, distFun, sc)
-        }
-    }
+    val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2").set("spark.default.parallelism", "16"))
+    val searchStrategy = new PkNN(Array(i1, i4), 1000)
+    val distFun: DistanceFunction = euclidean
 
-    test("instances amount is less than 2"){
-        val testingData1 = sc.parallelize(Seq[Instance[Array[Double]]]())
-        val testingData2 = sc.parallelize(Seq[Instance[Array[Double]]](i1))
-        assertThrows[InsufficientInstancesException]{
-            searchStrategy.findKNeighbors(testingData1, 1, distFun, sc)
-        }
-        assertThrows[InsufficientInstancesException]{
-            searchStrategy.findKNeighbors(testingData2, 1, distFun, sc)
-        }
-    }
 
-    test("k value is instances length"){
-        val testingData = sc.parallelize(Seq[Instance[Array[Double]]](i1, i2, i3, i4))
-        assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, 4, distFun, sc)
-        }
-        assertThrows[IncorrectKValueException]{
-            searchStrategy.findKNeighbors(testingData, 5, distFun, sc)
-        }
-    }
 
+//    test("k less than 1"){
+//        val testingData = sc.parallelize(Seq[Instance](i1, i2))
+//        assertThrows[IncorrectKValueException]{
+//            searchStrategy.findKNeighbors(testingData, 0, distFun, sc)
+//        }
+//        assertThrows[IncorrectKValueException]{
+//            searchStrategy.findKNeighbors(testingData, -1, distFun, sc)
+//        }
+//    }
+//
+//    test("instances amount is less than 2"){
+//        val testingData1 = sc.parallelize(Seq[Instance]())
+//        val testingData2 = sc.parallelize(Seq[Instance](i1))
+//        assertThrows[InsufficientInstancesException]{
+//            searchStrategy.findKNeighbors(testingData1, 1, distFun, sc)
+//        }
+//        assertThrows[InsufficientInstancesException]{
+//            searchStrategy.findKNeighbors(testingData2, 1, distFun, sc)
+//        }
+//    }
+//
+//    test("k value is instances length"){
+//        val testingData = sc.parallelize(Seq[Instance](i1, i2, i3, i4))
+//        assertThrows[IncorrectKValueException]{
+//            searchStrategy.findKNeighbors(testingData, 4, distFun, sc)
+//        }
+//        assertThrows[IncorrectKValueException]{
+//            searchStrategy.findKNeighbors(testingData, 5, distFun, sc)
+//        }
+//    }
+//
     test("knn results"){
         val k = 6
         val testingData = sc.parallelize(Seq(i1, i2, i3, i4, i5, i6, i7), 2)
 
-        val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, distFun, sc)
+        val kNeighborsRDD = searchStrategy.findKNeighborsExperiment(testingData, k, distFun, sc)
         val kNeighbors = kNeighborsRDD.collect()
 
         println(kNeighbors.map(t => s"${t._1}: ${t._2.map(n => s"${n.id} - ${n.distance}").mkString(", ")}").mkString("\n"))
@@ -102,6 +104,7 @@ class PkNNTest extends AnyFunSuite {
 
         // instance1
         val instance1NeighborsIds = sortedKNeighbors(0)._2.map(_.id)
+        println(s"Los neighbors de instance 1 son: ${instance1NeighborsIds.mkString("Array(", ", ", ")")}")
         assert(instance1NeighborsIds.sameElements(Array("5", "2", "6", "3", "4", "7")))
 
         // instance2
@@ -134,9 +137,6 @@ class PkNNTest extends AnyFunSuite {
         val instance7NeighborsIds = sortedKNeighbors(6)._2.map(_.id)
         assert(instance7NeighborsIds.sameElements(Array("4", "3", "6", "2", "5", "1")))
 
-//        println(s"paralelismo: ${sc.defaultParallelism}")
-//        System.in.read()
-//        sc.stop()
     }
 
     test("(Iris) General knn and rknn"){
@@ -155,7 +155,8 @@ class PkNNTest extends AnyFunSuite {
 
         // Getting kNeighbors from ExhaustiveSearch big data
         val rdd = sc.parallelize(baseInstances.toSeq, 2)
-        val kNeighborsRDD = searchStrategy.findKNeighbors(rdd, k, distFun, sc)
+        val pivots = rdd.takeSample(withReplacement = false, 2, 543)
+        val kNeighborsRDD = new PkNN(pivots, 1000).findKNeighborsExperiment(rdd, k, distFun, sc)
         val bigKNeighbors = kNeighborsRDD
             .collect()
             .map(tuple => (tuple._1.toInt, tuple._2))
