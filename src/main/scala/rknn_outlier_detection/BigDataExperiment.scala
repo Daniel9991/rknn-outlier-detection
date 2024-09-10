@@ -17,43 +17,25 @@ import rknn_outlier_detection.small_data.search.pivot_based.{FarthestFirstTraver
 // spark-submit --class rknn_outlier_detection.BigDataExperiment --master local[8] --driver-memory 12g --conf spark.default.parallelism=240 --conf spark.memory.storageFraction=0.3 C:\Users\danny\OneDrive\Escritorio\Proyectos\scala\rknn-outlier-detection\target\scala-2.13\rknn-outlier-detection_2.13-1_2.jar
 
 object BigDataExperiment {
-    def main(args: Array[String]): Unit = {
+    def maina(args: Array[String]): Unit = {
 
-//        val kValues = Array(600, 560, 520, 480, 440, 400, 360, 320, 280)
-//        val detectionMethods = Array("antihub", "ranked", "refined")
-        val detectionMethods = Array("refined")
-
+        val k = 800
+        val pivotsAmount = 100
 //        val detectionMethod = "antihub"
-        val kValues = Array(200)
+//        val detectionMethod = "ranked"
+        val detectionMethod = "refined"
+        val datasetSize = 50000
 
         try{
-
-
-//            val k = args(0).toInt
-            val k = kValues.max
-            //            val searchMethod = args(1)
-            val searchMethod = "pknn"
-            if(searchMethod != "exhaustive" && searchMethod != "pknn") throw new Exception(s"Unknown search strategy ${args(1)}")
-
-            //            val detectionMethod = args(2)
-            //            if(detectionMethod != "antihub" && detectionMethod != "ranked" && detectionMethod != "refined") throw new Exception(s"Unknown detection strategy ${args(2)}")
-
-//            val pivotsAmount = args(3).toInt
-            val pivotsAmount = 140
-
-            val datasetSize = -1
-
             val fullPath = System.getProperty("user.dir")
 
             val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
             val datasetPath = s"${fullPath}\\${datasetRelativePath}"
 
-            val before = System.nanoTime
+            val onStart = System.nanoTime
 
             val sc = new SparkContext(new SparkConf().setAppName("Scaled creditcard test"))
-//            val sc = new SparkContext(new SparkConf().setMaster("local[*]").set("spark.default.parallelism", "48").setAppName("Sparking2"))
 
-            //        val rawData = ReaderWriter.readCSV(filepath, hasHeader=false)
             val rawData = sc.textFile(datasetPath).map(line => line.split(","))
             val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
                 val (line, index) = tuple
@@ -63,65 +45,151 @@ object BigDataExperiment {
             }).cache()
             val instances = instancesAndClassification.map(_._1)
 
-            val kNeighbors = (searchMethod match {
-                case "pknn" => {
-                    val pivots = instances.takeSample(withReplacement = false, pivotsAmount)
-                    new PkNN(pivots, 1000).findApproximateKNeighbors(instances, k, euclidean, sc)
-                }
-                case "exhaustive" =>  new ExhaustiveBigData().findKNeighbors(instances, k, euclidean, sc)
-            }).cache
-            if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
-                throw new Exception("There are element with null neighbors")
-            }
+            val pivots = instances.takeSample(withReplacement = false, pivotsAmount)
+
+            val kNeighbors = new PkNN(pivots, 1000).findApproximateKNeighbors(instances, k, euclidean, sc).cache()
+
+            //                    if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
+            //                        throw new Exception("There are element with null neighbors")
+            //                    }
+
 //            kNeighbors.count()
-//            val searchAfter = System.nanoTime
-//            val searchDuration = (searchAfter - before) / 1000000
+//            val onFinishSearch = System.nanoTime
+//            val searchDuration = (onFinishSearch - onStart) / 1000000
+//
+//            val slicedKNeighbors = kNeighbors.mapValues(arr => arr.slice(0, k))
+//
+//            val onReverse = System.nanoTime
+            val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(kNeighbors).cache()
+//            rNeighbors.count()
+//            val onFinishReverse = System.nanoTime
+//            val reverseDuration = (onFinishReverse - onReverse) / 1000000
+//
+//
+//            val onDetection = System.nanoTime
 
-//            val kVal = k
-//            val withNull = kNeighbors.filter(point => point._2.contains(null))
-//            throw new Exception(s"There are ${withNull.collect().length} points with some null")
-            kValues.foreach(kVal => {
-                val slicedKNeighbors = kNeighbors.mapValues(arr => arr.slice(0, kVal))
+            val detectionResult = (detectionMethod match {
+                case "antihub" => new Antihub().antihub(rNeighbors)
+                case "ranked" => new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
+                case "refined" => new AntihubRefined(new AntihubRefinedParams(0.2, 0.3)).antihubRefined(rNeighbors)
+            }).cache
 
-//                val reverseBefore = System.nanoTime
-                val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(slicedKNeighbors).cache()
-//                rNeighbors.count()
-//                val reverseAfter = System.nanoTime
-//                val reverseDuration = (reverseAfter - reverseBefore) / 1000000
+            detectionResult.count()
+            val onFinishDetection = System.nanoTime
+//            val detectionDuration = (onFinishDetection - onDetection) / 1000000
 
-                detectionMethods.foreach(detectionMethod => {
+            val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
+            val predictionsAndLabels = classifications.join(detectionResult).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
 
-//                    val detectionBefore = System.nanoTime
+            val elapsedTime = s"${(onFinishDetection - onStart) / 1000000}ms"
 
-                    val detectionResult = (detectionMethod match {
-                        case "antihub" => new Antihub().antihub(rNeighbors)
-                        case "ranked" => new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
-                        case "refined" => new AntihubRefined(new AntihubRefinedParams(0.2, 0.3)).antihubRefined(rNeighbors)
-                    }).cache
-                    detectionResult.count()
+            println(s"-----------------------------------\nArea under ROC: ${detectionMetrics.areaUnderROC()}\nArea under Precision-Recall Curve: ${detectionMetrics.areaUnderPR()}\nElapsed time: $elapsedTime-----------------------------------")
 
-                    val detectionAfter = System.nanoTime
-//                    val detectionDuration = (detectionAfter - detectionBefore) / 1000000
+            val rocRelativePath = s"rocs\\creditcard${if(datasetSize == -1) "" else s"_${datasetSize}"}_${pivotsAmount}_${k}_pknn_approximate_1_${detectionMethod}.csv"
+            val rocPath = s"${fullPath}\\${rocRelativePath}"
 
-                    val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
-                    val predictionsAndLabels = classifications.join(detectionResult).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-                    val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
-                    val elapsedTime = s"${(detectionAfter - before) / 1000000}ms"
+            val roc = detectionMetrics.roc().collect()
+            val rocTextForCSV = roc.map(tuple => s"${tuple._1},${tuple._2}").mkString("\n")
+            ReaderWriter.writeToFile(rocPath, rocTextForCSV)
+            val resultsFileId = s"${if(datasetSize == -1) "full" else s"${datasetSize}"}_${pivotsAmount}_${k}_pknn_approximate_${detectionMethod}"
+            saveStatistics(resultsFileId, detectionMetrics.areaUnderROC(), detectionMetrics.areaUnderPR(), elapsedTime)
 
-                    println(s"-----------------------------------\nArea under ROC: ${detectionMetrics.areaUnderROC()}\nArea under Precision-Recall Curve: ${detectionMetrics.areaUnderPR()}\nElapsed time: $elapsedTime-----------------------------------")
+            println(s"---------------Done executing -------------------")
+        }
+        catch{
+            case e: Exception => {
+                println("-------------The execution didn't finish due to------------------")
+                println(e)
+            }
+        }
+    }
 
-                    val rocRelativePath = s"rocs\\creditcard${if(datasetSize == -1) "" else s"_${datasetSize}"}_${kVal}_${searchMethod}_${detectionMethod}.csv"
-                    val rocPath = s"${fullPath}\\${rocRelativePath}"
+    def main(args: Array[String]): Unit = {
 
-                    val roc = detectionMetrics.roc().collect()
-                    val rocTextForCSV = roc.map(tuple => s"${tuple._1},${tuple._2}").mkString("\n")
-                    ReaderWriter.writeToFile(rocPath, rocTextForCSV)
-                    val resultsFileId = s"${if(datasetSize == -1) "full" else s"${datasetSize}"}_${searchMethod}_${detectionMethod}_${kVal}"
-                    saveStatistics(resultsFileId, detectionMetrics.areaUnderROC(), detectionMetrics.areaUnderPR(), s"$elapsedTime")
+        val kValues = Array(1200)
+        val pivotsAmounts = Array(12)
+        val detectionMethods = Array("antihub", "ranked", "refined")
+//        val detectionMethods = Array("refined")
+        val datasetSize = 50000
+
+        try{
+            val fullPath = System.getProperty("user.dir")
+
+            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
+            val datasetPath = s"${fullPath}\\${datasetRelativePath}"
+
+            val onStart = System.nanoTime
+
+            val sc = new SparkContext(new SparkConf().setAppName("Scaled creditcard test"))
+
+            val rawData = sc.textFile(datasetPath).map(line => line.split(","))
+            val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
+                val (line, index) = tuple
+                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+                val classification = if (line.last == "1") "1.0" else "0.0"
+                (new Instance(index.toString, attributes), classification)
+            }).cache()
+            val instances = instancesAndClassification.map(_._1)
+
+            val maxK = kValues.max
+
+            pivotsAmounts.foreach(pivotsAmount => {
+                val pivots = instances.takeSample(withReplacement = false, pivotsAmount) // seed=87654
+
+                val kNeighbors = new PkNN(pivots, 1000).findApproximateKNeighbors(instances, maxK, euclidean, sc).cache()
+//                val kNeighbors = new ExhaustiveBigData().findKNeighbors(instances, maxK, euclidean, sc).cache()
+
+                //                    if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
+                //                        throw new Exception("There are element with null neighbors")
+                //                    }
+
+                kNeighbors.count()
+                val onFinishSearch = System.nanoTime
+                val searchDuration = (onFinishSearch - onStart) / 1000000
+
+                kValues.foreach(k => {
+                    val slicedKNeighbors = kNeighbors.mapValues(arr => arr.slice(0, k))
+
+                    val onReverse = System.nanoTime
+                    val rNeighbors = ReverseNeighborsSearch.findReverseNeighbors(slicedKNeighbors).cache()
+                    rNeighbors.count()
+                    val onFinishReverse = System.nanoTime
+                    val reverseDuration = (onFinishReverse - onReverse) / 1000000
+
+                    detectionMethods.foreach(detectionMethod => {
+
+                        val onDetection = System.nanoTime
+
+                        val detectionResult = (detectionMethod match {
+                            case "antihub" => new Antihub().antihub(rNeighbors)
+                            case "ranked" => new RankedReverseCount(k).calculateAnomalyDegree(rNeighbors, k)
+                            case "refined" => new AntihubRefined(new AntihubRefinedParams(0.2, 0.3)).antihubRefined(rNeighbors)
+                        }).cache
+
+                        detectionResult.count()
+                        val onFinishDetection = System.nanoTime
+                        val detectionDuration = (onFinishDetection - onDetection) / 1000000
+
+                        val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
+                        val predictionsAndLabels = classifications.join(detectionResult).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+                        val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
+
+                        val elapsedTime = s"s: ${searchDuration} - r: ${reverseDuration} - d: ${detectionDuration} = ${searchDuration + reverseDuration + detectionDuration}ms"
+
+                        println(s"-----------------------------------\nArea under ROC: ${detectionMetrics.areaUnderROC()}\nArea under Precision-Recall Curve: ${detectionMetrics.areaUnderPR()}\nElapsed time: $elapsedTime-----------------------------------")
+
+                        val rocRelativePath = s"rocs\\creditcard${if(datasetSize == -1) "" else s"_${datasetSize}"}_${pivotsAmount}_${k}_pknn_approximate_1_${detectionMethod}.csv"
+                        val rocPath = s"${fullPath}\\${rocRelativePath}"
+
+                        val roc = detectionMetrics.roc().collect()
+                        val rocTextForCSV = roc.map(tuple => s"${tuple._1},${tuple._2}").mkString("\n")
+                        ReaderWriter.writeToFile(rocPath, rocTextForCSV)
+                        val resultsFileId = s"${if(datasetSize == -1) "full" else s"${datasetSize}"}_${pivotsAmount}_${k}_pknn_approximate_${detectionMethod}"
+                        saveStatistics(resultsFileId, detectionMetrics.areaUnderROC(), detectionMetrics.areaUnderPR(), elapsedTime)
+                    })
                 })
             })
-
-
             println(s"---------------Done executing -------------------")
         }
         catch{

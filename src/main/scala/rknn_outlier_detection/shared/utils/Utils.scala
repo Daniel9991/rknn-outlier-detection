@@ -116,4 +116,54 @@ object Utils {
     def getKeyFromInstancesIds(id1: String, id2: String): String = {
         if(id1 < id2) s"${id1}_${id2}" else s"${id2}_${id1}"
     }
+
+    def mergeNeighborIntoArray(neighbors: Array[KNeighbor], newNeighbor: KNeighbor): Array[KNeighbor] = {
+        val neighborsCopy = Array.fill[KNeighbor](neighbors.length)(null)
+        var index = 0
+        var newIsInYet = false
+        for(i <- neighborsCopy.indices){
+            if(newIsInYet || (neighbors(index) != null && neighbors(index).distance <= newNeighbor.distance)){
+                neighborsCopy(i) = neighbors(index)
+                index += 1
+            }
+            else if(!newIsInYet){
+                neighborsCopy(i) = newNeighbor
+                newIsInYet = true
+            }
+        }
+
+        neighborsCopy
+    }
+
+    def mergeTwoNeighborArrays(neighbors1: Array[KNeighbor], neighbors2: Array[KNeighbor]): Array[KNeighbor] = {
+        val mergedNeighbors = Array.fill[KNeighbor](neighbors1.length)(null)
+        var index1 = 0
+        var index2 = 0
+
+        var filteredNeighbors1 = neighbors1.filter(n => n != null)
+        var filteredNeighbors2 = neighbors2.filter(n => n != null)
+
+        for(i <- mergedNeighbors.indices){
+            if(neighbors1(index1) != null && neighbors2(index2) != null){
+                if(neighbors1(index1).distance <= neighbors2(index2).distance){
+                    mergedNeighbors(i) = neighbors1(index1)
+                    index1 += 1
+                }
+                else{
+                    mergedNeighbors(i) = neighbors2(index2)
+                    index2 += 1
+                }
+            }
+            else if(neighbors1(index1) != null){
+                mergedNeighbors(i) = neighbors1(index1)
+                index1 += 1
+            }
+            else{
+                mergedNeighbors(i) = neighbors2(index2)
+                index2 += 1
+            }
+        }
+
+        mergedNeighbors
+    }
 }

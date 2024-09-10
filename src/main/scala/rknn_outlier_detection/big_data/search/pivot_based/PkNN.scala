@@ -400,10 +400,6 @@ class PkNN(
     def findApproximateKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
         val pivots = sc.parallelize(_pivots)
 
-        // Finding pivots distances and broadcasting them
-//        val pivotDistances = getDistancesMap(_pivots, distanceFunction)
-//        val broadcastedPivotDistances = sc.broadcast(pivotDistances)
-
         // Create cells
         val cells = instances.cartesian(pivots)
             .map(tuple => {
@@ -413,38 +409,28 @@ class PkNN(
             .reduceByKey((pivotDist1, pivotDist2) => if(pivotDist2._2 < pivotDist1._2) pivotDist2 else pivotDist1)
             .map(t => (t._2._1, t._1))
 
-        // Step 1
-//        val coreKNNs = cells.groupByKey.mapValues(iterable => {
-//            // Assuming that an array of instances fits into memory??? Maybe used distributed version???
-//            val knns = new ExhaustiveSmallData().findKNeighbors(iterable.toArray, k, distanceFunction)
-//            iterable.zip(knns).map(tuple => {
-//                val (instance, kNeighbors) = tuple
-//                (instance, kNeighbors)
-//            })
-//        })
-//        val resulting = coreKNNs.flatMap(_._2)
+        val coreKNNs = cells.join(cells)
+            .map(tuple => (tuple._2._1, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
+            .aggregateByKey(Array.fill[KNeighbor](k)(null))(
+                (acc, neighbor) => {
+                    var finalAcc = acc
+                    if(acc.last == null || neighbor.distance < acc.last.distance)
+                        finalAcc = Utils.insertNeighborInArray(acc, neighbor)
 
-                val coreKNNs = cells.join(cells)
-                    .map(tuple => (tuple._2._1, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
-                    .aggregateByKey(Array.fill[KNeighbor](k)(null))(
-                        (acc, neighbor) => {
-                            var finalAcc = acc
-                            if(acc.last == null || neighbor.distance < acc.last.distance)
-                                finalAcc = Utils.insertNeighborInArray(acc, neighbor)
-                            finalAcc
-                        },
-                        (acc1, acc2) => {
-                            var finalAcc = acc1
-                            for(neighbor <- acc2){
-                                if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
-                                    finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
-                                }
-                            }
-
-                            finalAcc
+                    finalAcc
+                },
+                (acc1, acc2) => {
+                    var finalAcc = acc1
+                    for(neighbor <- acc2){
+                        if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
+                            finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
                         }
-                    )
-                val resulting = coreKNNs
+                    }
+
+                    finalAcc
+                }
+            )
+        val resulting = coreKNNs
 
         resulting.cache()
 
@@ -463,20 +449,6 @@ class PkNN(
             !kNeighbors.contains(null)
         }).map(point => (point._1.id, point._2))
 
-//        val incompleteCoreKNNsFixed = incompleteCoreKNNs.map(pointTuple => {
-//            val (point, kNeighbors) = pointTuple
-//            val kNeighborsIds = kNeighbors.filter(kNeighbor => kNeighbor != null).map(kNeighbor => kNeighbor.id)
-//            instances.foreach(instance => {
-//                if(instance.id != point.id && !kNeighborsIds.contains(instance.id)){
-//                    val dist = distanceFunction(point.data, instance.data)
-//                    if(kNeighbors.contains(null) || kNeighbors.last.distance > dist){
-//                        addNewNeighbor(kNeighbors, new KNeighbor(instance.id, dist))
-//                    }
-//                }
-//            })
-//            (point.id, kNeighbors)
-//        })
-
         val incompleteCells = incompleteCoreKNNs.map(point => {
             (point._1, point._2.filter(kNeighbor => kNeighbor != null).map(kNeighbor => kNeighbor.id))
         })
@@ -485,23 +457,23 @@ class PkNN(
             .filter(pair => pair._1._1.id != pair._2.id && !pair._1._2.contains(pair._2.id))
             .map(pair => (pair._1._1.id, new KNeighbor(pair._2.id, distanceFunction(pair._1._1.data, pair._2.data))))
             .aggregateByKey(Array.fill[KNeighbor](k)(null))(
-            (acc, neighbor) => {
-                var finalAcc = acc
-                if(acc.last == null || neighbor.distance < acc.last.distance)
-                    finalAcc = Utils.insertNeighborInArray(acc, neighbor)
+                (acc, neighbor) => {
+                    var finalAcc = acc
+                    if(acc.last == null || neighbor.distance < acc.last.distance)
+                        finalAcc = Utils.insertNeighborInArray(acc, neighbor)
 
-                finalAcc
-            },
-            (acc1, acc2) => {
-                var finalAcc = acc1
-                for(neighbor <- acc2){
-                    if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
-                        finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
+                    finalAcc
+                },
+                (acc1, acc2) => {
+                    var finalAcc = acc1
+                    for(neighbor <- acc2){
+                        if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
+                            finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
+                        }
                     }
-                }
 
-                finalAcc
-            }
+                    finalAcc
+                }
         )
 
         val incompleteCoreKNNsFixed = incompleteCoreKNNs.map(tuple => (tuple._1.id, tuple._2)).join(supportKNNs).map(tuple => {
@@ -519,7 +491,56 @@ class PkNN(
         completeCoreKNNs.union(incompleteCoreKNNsFixed)
     }
 
-    def findApproximateKNeighborsSmarter(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+//    def findApproximateKNeighborsSmarter3(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+//
+//        val pivots = sc.parallelize(_pivots)
+//
+//        // Create cells
+//        val cells = instances.cartesian(pivots)
+//            .map(tuple => {
+//                val (instance, pivot) = tuple
+//                (instance, (pivot, distanceFunction(instance.data, pivot.data)))
+//            })
+//            .reduceByKey((pivotDist1, pivotDist2) => if(pivotDist2._2 < pivotDist1._2) pivotDist2 else pivotDist1)
+//            .map(t => (t._2._1, t._1))
+//
+//        val pivotAndBodyCount = cells.mapValues(_ => 1).reduceByKey(_+_)
+//        val pointsWithCount = cells.join(pivotAndBodyCount).map(tuple => tuple._2)
+//        pointsWithCount.cache()
+//
+//        val coveredPoints = pointsWithCount.filter(pointWithCount => pointWithCount._2 > k)
+//        val uncoveredPoints = pointsWithCount.filter(pointWithCount => pointWithCount._2 <= k)
+//
+//        val fullUncoveredPoints = uncoveredPoints.cartesian(instances)
+//            .filter(pair => pair._1._1.id != pair._2.id)
+//            .map(tuple => (tuple._1._1, new KNeighbor(tuple._2.id, distanceFunction(tuple._1._1.data, tuple._2.data))))
+//
+//        val fullCoveredPoints = coveredPoints.join(coveredPoints)
+//            .map(tuple => (tuple._2._1, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
+//
+//        fullUncoveredPoints.union(fullCoveredPoints)
+//            .aggregateByKey(Array.fill[KNeighbor](k)(null))(
+//                (acc, neighbor) => {
+//                    var finalAcc = acc
+//                    if(acc.last == null || neighbor.distance < acc.last.distance)
+//                        finalAcc = Utils.insertNeighborInArray(acc, neighbor)
+//                    finalAcc
+//                },
+//                (acc1, acc2) => {
+//                    var finalAcc = acc1
+//                    for(neighbor <- acc2){
+//                        if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
+//                            finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
+//                        }
+//                    }
+//
+//                    finalAcc
+//                }
+//            )
+//            .map(tuple => (tuple._1.id, tuple._2))
+//    }
+
+    def findApproximateKNeighborsSmarter3(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
         val pivots = sc.parallelize(_pivots)
 
         // Finding pivots distances and broadcasting them

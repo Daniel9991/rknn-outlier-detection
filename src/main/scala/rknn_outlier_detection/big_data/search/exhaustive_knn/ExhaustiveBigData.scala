@@ -74,7 +74,8 @@ class ExhaustiveBigData extends KNNSearchStrategy {
      */
     def findKNeighborsAggregatingPairs(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction): RDD[(String, Array[KNeighbor])]={
 
-        val fullyMappedInstances = instances.cartesian(instances)
+        val repartioned = instances.repartition(16)
+        val fullyMappedInstances = repartioned.cartesian(repartioned)
             .filter(instances_tuple => instances_tuple._1.id != instances_tuple._2.id)
             .map(instances_tuple => {
                 val (ins1, ins2) = instances_tuple
@@ -89,21 +90,15 @@ class ExhaustiveBigData extends KNNSearchStrategy {
 
         val x = fullyMappedInstances.aggregateByKey(Array.fill[KNeighbor](k)(null))(
             (acc, neighbor) => {
-                var finalAcc = acc
+                var finalAcc = acc.map(n => if(n != null) n.copy(n.id, n.distance) else null)
                 if(acc.last == null || neighbor.distance < acc.last.distance)
-                    finalAcc = Utils.insertNeighborInArray(acc, neighbor)
-
-                finalAcc
+                    Utils.mergeNeighborIntoArray(finalAcc, neighbor)
+                else{
+                    finalAcc
+                }
             },
             (acc1, acc2) => {
-                var finalAcc = acc1
-                for(neighbor <- acc2){
-                    if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
-                        finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
-                    }
-                }
-
-                finalAcc
+                Utils.mergeTwoNeighborArrays(acc1, acc2)
             }
         )
 
