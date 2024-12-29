@@ -3,7 +3,7 @@ package rknn_outlier_detection.big_data.search.reverse_knn
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.shared.custom_objects.{KNeighbor, RNeighbor}
 
-object ReverseNeighborsSearch {
+object NeighborsReverser {
     /**
      * Map instances to tuples of (kNeighborId, instanceId) for each kNeighbor
      * that an instance has.
@@ -16,7 +16,7 @@ object ReverseNeighborsSearch {
      * @return RDD containing a tuple for
      *         each instance with its array of reverse neighbors
      */
-    def findReverseNeighbors(instancesWithNeighbors: RDD[(String, Array[KNeighbor])]): RDD[(String, Array[RNeighbor])] = {
+    def findReverseNeighbors(instancesWithNeighbors: RDD[(Int, Array[KNeighbor])]): RDD[(Int, Array[RNeighbor])] = {
 
         val neighborReferences = instancesWithNeighbors.flatMap(tuple => {
             val (instanceId, neighbors) = tuple

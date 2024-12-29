@@ -10,51 +10,7 @@ import rknn_outlier_detection.shared.distance.DistanceFunctions
 import rknn_outlier_detection.shared.utils.Utils
 import rknn_outlier_detection.shared.utils.Utils.sortNeighbors
 
-class ExhaustiveBigData extends KNNSearchStrategy {
-
-    /**
-     * Find k neighbors by using the cartesian product to get all
-     * combinations of instances.
-     * Filter out pairs where both instances are the same.
-     * Map all pairs to KNeighbor objects
-     * Group all neighbors by instance
-     * Sort all neighbors for an instance and slice it to get
-     * the k closest instances
-     *
-     * Costly as it produces lots of pairs (n squared).
-     * Sorts n arrays of size n-1 to get k neighbors (n being instances.length)
-     *
-     * @param instances Collection of instances to process
-     * @param k Amount of neighbors for each instance
-     * @return RDD containing a tuple for
-     *         each instance with its array of neighbors
-     */
-    def findKNeighborsMappingAllToKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction): RDD[(String, Array[KNeighbor])]={
-
-        val fullyMappedInstances = instances.cartesian(instances)
-            .filter(instances_tuple => instances_tuple._1.id != instances_tuple._2.id)
-            .map(instances_tuple => {
-                val (ins1, ins2) = instances_tuple
-                (
-                ins1.id,
-                new KNeighbor(
-                ins2.id,
-                    distanceFunction(ins1.data, ins2.data)
-                )
-                )
-            })
-
-        val groupedCombinations = fullyMappedInstances.groupByKey()
-        val x = groupedCombinations.map(tuple => {
-            val (instanceId, neighbors) = tuple
-            (
-            instanceId,
-            neighbors.toArray.sortWith(sortNeighbors).slice(0, k)
-            )
-        })
-
-        x
-    }
+object ExhaustiveBigData extends KNNSearchStrategy {
 
     /**
      * Find k neighbors by using the cartesian product to get all
@@ -72,10 +28,10 @@ class ExhaustiveBigData extends KNNSearchStrategy {
      * @return RDD containing a tuple for
      *         each instance with its array of neighbors
      */
-    def findKNeighborsAggregatingPairs(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction): RDD[(String, Array[KNeighbor])]={
+    def findKNeighborsAggregatingPairs(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction): RDD[(Int, Array[KNeighbor])]={
 
-        val repartioned = instances.repartition(16)
-        val fullyMappedInstances = repartioned.cartesian(repartioned)
+        val repartitioned = instances.repartition(16).cache
+        val fullyMappedInstances = repartitioned.cartesian(repartitioned)
             .filter(instances_tuple => instances_tuple._1.id != instances_tuple._2.id)
             .map(instances_tuple => {
                 val (ins1, ins2) = instances_tuple
@@ -83,7 +39,7 @@ class ExhaustiveBigData extends KNNSearchStrategy {
                     ins1.id,
                     new KNeighbor(
                         ins2.id,
-                        distanceFunction(ins1.data, ins2.data)
+                        BigDecimal(distanceFunction(ins1.data, ins2.data)).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble
                     )
                 )
             })
@@ -105,10 +61,10 @@ class ExhaustiveBigData extends KNNSearchStrategy {
         x
     }
 
-    override def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(String, Array[KNeighbor])] = {
+    override def findKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
         val instancesAmount = instances.count()
         if(instancesAmount < 2) throw new InsufficientInstancesException("Received less than 2 instances, not enough for a neighbors search.")
-        if(k <= 1 || k > instancesAmount - 1) throw new IncorrectKValueException("k has to be a natural number between 1 and n - 1 (n is instances length)")
+        if(k < 1 || k > instancesAmount - 1) throw new IncorrectKValueException("k has to be a natural number between 1 and n - 1 (n is instances length)")
         findKNeighborsAggregatingPairs(instances, k, distanceFunction)
     }
 }

@@ -3,7 +3,7 @@ package rknn_outlier_detection.big_data.search
 import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.funsuite.AnyFunSuite
 import rknn_outlier_detection.{DistanceFunction, euclidean}
-import rknn_outlier_detection.big_data.search.reverse_knn.ReverseNeighborsSearch
+import rknn_outlier_detection.big_data.search.reverse_knn.NeighborsReverser
 import rknn_outlier_detection.big_data.search.exhaustive_knn.ExhaustiveBigData
 import rknn_outlier_detection.exceptions.{IncorrectKValueException, InsufficientInstancesException}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
@@ -45,15 +45,15 @@ class ExhaustiveBigDataTest extends AnyFunSuite {
     }
 
     val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2"))
-    val searchStrategy = new ExhaustiveBigData()
+    val searchStrategy = ExhaustiveBigData
 
-    val i1 = new Instance("1", Array(1.0, 1.0))
-    val i2 = new Instance("2", Array(2.0, 2.0))
-    val i3 = new Instance("3", Array(3.0, 3.0))
-    val i4 = new Instance("4", Array(5.0, 5.0))
-    val i5 = new Instance("5", Array(1.9, 1.6))
-    val i6 = new Instance("6", Array(2.2, 2.4))
-    val i7 = new Instance("7", Array(6.4, 7.7))
+    val i1 = new Instance(1, Array(1.0, 1.0))
+    val i2 = new Instance(2, Array(2.0, 2.0))
+    val i3 = new Instance(3, Array(3.0, 3.0))
+    val i4 = new Instance(4, Array(5.0, 5.0))
+    val i5 = new Instance(5, Array(1.9, 1.6))
+    val i6 = new Instance(6, Array(2.2, 2.4))
+    val i7 = new Instance(7, Array(6.4, 7.7))
 
     test("k less than 1"){
         val testingData = sc.parallelize(Seq[Instance](i1, i2))

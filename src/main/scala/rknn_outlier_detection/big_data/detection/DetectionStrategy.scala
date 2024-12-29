@@ -4,5 +4,5 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.shared.custom_objects.{Instance, RNeighbor}
 
 trait DetectionStrategy {
-    def detect(reverseNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)]
+    def detect(reverseNeighbors: RDD[(Int, Array[RNeighbor])]): RDD[(Int, Double)]
 }

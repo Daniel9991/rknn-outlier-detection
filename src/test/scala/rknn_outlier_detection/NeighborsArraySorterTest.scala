@@ -6,14 +6,14 @@ import rknn_outlier_detection.shared.utils.Utils
 
 class NeighborsArraySorterTest extends AnyFunSuite {
 
-    val neighbor1 = new KNeighbor("1", 1.4678)
-    val neighbor2 = new KNeighbor("2", 2.9184)
-    val neighbor3 = new KNeighbor("3", 3.5643)
-    val neighbor4 = new KNeighbor("4", 3.5643)
-    val neighbor5 = new KNeighbor("5", 5.9023)
-    val neighbor6 = new KNeighbor("6", 5.9024)
-    val neighbor7 = new KNeighbor("7", 8.2151)
-    val neighbor8 = new KNeighbor("8", 10.1234)
+    val neighbor1 = new KNeighbor(1, 1.4678)
+    val neighbor2 = new KNeighbor(2, 2.9184)
+    val neighbor3 = new KNeighbor(3, 3.5643)
+    val neighbor4 = new KNeighbor(4, 3.5643)
+    val neighbor5 = new KNeighbor(5, 5.9023)
+    val neighbor6 = new KNeighbor(6, 5.9024)
+    val neighbor7 = new KNeighbor(7, 8.2151)
+    val neighbor8 = new KNeighbor(8, 10.1234)
 
 
     test("Testing array length"){

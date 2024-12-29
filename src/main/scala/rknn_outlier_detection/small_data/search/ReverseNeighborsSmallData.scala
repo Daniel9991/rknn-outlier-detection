@@ -21,7 +21,7 @@ object ReverseNeighborsSmallData {
 
             kNeighbors.zipWithIndex.foreach(subTuple => {
                 val (kNeighbor, kNeighborIndex) = subTuple
-                reverseNeighbors(kNeighbor.id.toInt) += new RNeighbor(instanceIndex.toString, kNeighborIndex)
+                reverseNeighbors(kNeighbor.id) += new RNeighbor(instanceIndex, kNeighborIndex)
             })
         })
 

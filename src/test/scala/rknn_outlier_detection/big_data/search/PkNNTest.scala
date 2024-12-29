@@ -4,7 +4,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.funsuite.AnyFunSuite
 import rknn_outlier_detection.{DistanceFunction, euclidean}
 import rknn_outlier_detection.big_data.search.exhaustive_knn.ExhaustiveBigData
-import rknn_outlier_detection.big_data.search.pivot_based.{PkNN, WIPPkNN}
+import rknn_outlier_detection.big_data.search.pivot_based.PkNN
 import rknn_outlier_detection.exceptions.{IncorrectKValueException, InsufficientInstancesException}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
@@ -44,13 +44,13 @@ class PkNNTest extends AnyFunSuite {
         sortedArr1.sameElements(sortedArr2)
     }
 
-    val i1 = new Instance("1", Array(1.0, 1.0))
-    val i2 = new Instance("2", Array(2.0, 2.0))
-    val i3 = new Instance("3", Array(3.0, 3.0))
-    val i4 = new Instance("4", Array(5.0, 5.0))
-    val i5 = new Instance("5", Array(1.9, 1.6))
-    val i6 = new Instance("6", Array(2.2, 2.4))
-    val i7 = new Instance("7", Array(6.4, 7.7))
+    val i1 = new Instance(1, Array(1.0, 1.0))
+    val i2 = new Instance(2, Array(2.0, 2.0))
+    val i3 = new Instance(3, Array(3.0, 3.0))
+    val i4 = new Instance(4, Array(5.0, 5.0))
+    val i5 = new Instance(5, Array(1.9, 1.6))
+    val i6 = new Instance(6, Array(2.2, 2.4))
+    val i7 = new Instance(7, Array(6.4, 7.7))
 
     val sc = new SparkContext(new SparkConf().setMaster("local[*]").setAppName("Sparking2").set("spark.default.parallelism", "16"))
     val searchStrategy = new PkNN(Array(i1, i4), 1000)
@@ -93,7 +93,7 @@ class PkNNTest extends AnyFunSuite {
         val k = 6
         val testingData = sc.parallelize(Seq(i1, i2, i3, i4, i5, i6, i7), 2)
 
-        val kNeighborsRDD = searchStrategy.findKNeighborsExperiment(testingData, k, distFun, sc)
+        val kNeighborsRDD = searchStrategy.findKNeighbors(testingData, k, distFun, sc)
         val kNeighbors = kNeighborsRDD.collect()
 
         println(kNeighbors.map(t => s"${t._1}: ${t._2.map(n => s"${n.id} - ${n.distance}").mkString(", ")}").mkString("\n"))
@@ -147,7 +147,7 @@ class PkNNTest extends AnyFunSuite {
         val baseInstances = rawData.zipWithIndex.map(tuple => {
             val (line, index) = tuple
             val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-            new Instance(index.toString, attributes)
+            new Instance(index, attributes)
         })
 
         // Getting kNeighbors from ExhaustiveSearch small data
@@ -156,7 +156,7 @@ class PkNNTest extends AnyFunSuite {
         // Getting kNeighbors from ExhaustiveSearch big data
         val rdd = sc.parallelize(baseInstances.toSeq, 2)
         val pivots = rdd.takeSample(withReplacement = false, 2, 543)
-        val kNeighborsRDD = new PkNN(pivots, 1000).findKNeighborsExperiment(rdd, k, distFun, sc)
+        val kNeighborsRDD = new PkNN(pivots, 1000).findKNeighbors(rdd, k, distFun, sc)
         val bigKNeighbors = kNeighborsRDD
             .collect()
             .map(tuple => (tuple._1.toInt, tuple._2))

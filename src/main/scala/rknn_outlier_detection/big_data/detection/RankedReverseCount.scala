@@ -3,7 +3,7 @@ package rknn_outlier_detection.big_data.detection
 import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.shared.custom_objects.{Instance, RNeighbor}
 
-class RankedReverseCount(val k: Int) extends DetectionStrategy with Serializable {
+class RankedReverseCount(val weight: Double, val k: Int) extends DetectionStrategy with Serializable {
     private def normalizeReverseNeighborsCount(count: Double): Double = {
         if(count == 0.0)
             1.0
@@ -11,8 +11,8 @@ class RankedReverseCount(val k: Int) extends DetectionStrategy with Serializable
             1.0 / count
     }
 
-    def calculateAnomalyDegree(idsWithRNeighbors: RDD[(String, Array[RNeighbor])], k: Int): RDD[(String, Double)] ={
-        val rankDiscount = 0.7 / k.toDouble
+    def calculateAnomalyDegree(idsWithRNeighbors: RDD[(Int, Array[RNeighbor])], k: Int): RDD[(Int, Double)] ={
+        val rankDiscount = weight / k.toDouble
         idsWithRNeighbors.map(tuple => {
             val (id, reverseNeighbors) = tuple
             val rankedCount = reverseNeighbors.map(n => 1 - n.rank * rankDiscount).sum
@@ -20,7 +20,7 @@ class RankedReverseCount(val k: Int) extends DetectionStrategy with Serializable
         })
     }
 
-    override def detect(reverseNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)] = {
+    override def detect(reverseNeighbors: RDD[(Int, Array[RNeighbor])]): RDD[(Int, Double)] = {
         calculateAnomalyDegree(reverseNeighbors, k)
     }
 }

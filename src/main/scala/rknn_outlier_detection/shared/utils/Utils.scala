@@ -113,7 +113,7 @@ object Utils {
         candidatePivots
     }
 
-    def getKeyFromInstancesIds(id1: String, id2: String): String = {
+    def getKeyFromInstancesIds(id1: Int, id2: Int): String = {
         if(id1 < id2) s"${id1}_${id2}" else s"${id2}_${id1}"
     }
 

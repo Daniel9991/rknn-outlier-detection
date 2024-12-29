@@ -1,180 +1,213 @@
 package rknn_outlier_detection
 
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions.{col, desc}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StringType, StructField, StructType}
 import org.apache.spark.{SparkConf, SparkContext}
-import rknn_outlier_detection.big_data.search.pivot_based.LAESA
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.distance.DistanceFunctions
-import rknn_outlier_detection.shared.utils.Utils
+import rknn_outlier_detection.shared.utils.{ReaderWriter, Utils}
 
+import scala.collection.immutable.HashMap
 import scala.collection.mutable.ArrayBuffer
 
 object Main {
 
-    val sc = new SparkContext(new SparkConf().setMaster("local").setAppName("Sparking2"))
+    def main(args: Array[String]): Unit = {
 
-    def main(args: Array[String]): Unit ={
+        val fullPath = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection"
+        val datasetRelativePath = "results\\structured-results.csv"
+        val datasetPath = s"${fullPath}\\${datasetRelativePath}"
 
-        println("Hi, mom!")
-//        val rdd = sc.parallelize(Seq(1,2,3,4,5))
-//        val pivotsAmount = 4
-//        val pivots = new ArrayBuffer[Int]()
-//        var count = 0
-//        while(pivots.length < pivotsAmount){
-//            pivots.addAll(rdd.take(count))
-//            count += 1
-//        }
-//        println(pivots)
+        val experimentsFullPath = s"C:\\Users\\danny\\OneDrive\\Escritorio\\school\\la tesis\\new_experiments.csv"
 
-        val rdd1 = sc.parallelize(Seq(("A", 1), ("A", 28), ("B", 2), ("B", 3)))
-        val rdd2 = sc.parallelize(Seq(("A", 4), ("A", 9), ("B", 5), ("D", 6)))
-        val result = rdd1.join(rdd1)
-        result.foreach(combo => println(s"${combo._2}"))
-//        println(s"The rdd has ${rdd.count()} elements")
-//         val i1 = new Instance("1", Array(1.0, 1.0), "")
-//         val i2 = new Instance("2", Array(2.0, 2.0), "")
-//         val i3 = new Instance("3", Array(3.0, 3.0), "")
-//         val i4 = new Instance("4", Array(4.0, 4.0), "")
-//         val i5 = new Instance("5", Array(5.0, 5.0), "")
+        val spark = SparkSession.builder()
+            .appName("Analyzing Results")
+            .master("local[*]")
+            .getOrCreate();
 
-//         val instances = sc.parallelize(Seq(i1, i2, i3, i4, i5))
-//         val k = 3
-//         val basePivots = sc.parallelize(instances.takeSample(withReplacement=false, num=1, seed=1))
-//         val basePivotsIds = basePivots.map(_.id).collect()
+        class DataFrameColNames(
+            val datasetSize: String,
+            val k: String,
+            val pivotsAmount: String,
+            val searchMethod: String,
+            val seed: String,
+            val detectionMethod: String,
+            val roc: String,
+            val prc: String,
+            val searchDuration: String,
+            val reverseDuration: String,
+            val detectionDuration: String,
+            val totalDuration: String
+        )
 
-//         println(s"Pivots are (${basePivots.count()}):")
-//         basePivots.foreach(pivot => println(pivot.id))
+        val dfCols = new DataFrameColNames(
+            datasetSize="DATASET_SIZE",
+            k="K",
+            pivotsAmount="PIVOTS_AMOUNT",
+            searchMethod="SEARCH_METHOD",
+            seed="SEED",
+            detectionMethod="DETECTION_METHOD",
+            roc="ROC",
+            prc="PRC",
+            searchDuration="SEARCH_DURATION",
+            reverseDuration="REVERSE_DURATION",
+            detectionDuration="DETECTION_DURATION",
+            totalDuration="TOTAL_DURATION"
+        )
 
-//         val pivotsDistances = basePivots.cartesian(instances)
-// //            .filter(tuple => tuple._1.id != tuple._2.id)
-//             .map(tuple => {
-//                 val (pivot, instance) = tuple
-//                 val distance = DistanceFunctions.euclidean(pivot.attributes, instance.attributes)
-//                 val distanceObject = new DistanceObject(pivot.id, instance.id, distance)
-//                 (instance , distanceObject)
-//             })
-//             .groupByKey()
+        val datasetSchema = StructType(Array(
+            StructField(dfCols.datasetSize, StringType, nullable = false),
+            StructField(dfCols.k, IntegerType, nullable = false),
+            StructField(dfCols.pivotsAmount, IntegerType, nullable = false),
+            StructField(dfCols.searchMethod, StringType, nullable = false),
+            StructField(dfCols.seed, IntegerType, nullable = false),
+            StructField(dfCols.detectionMethod, StringType, nullable = false),
+            StructField(dfCols.roc, DoubleType, nullable = false),
+            StructField(dfCols.prc, DoubleType, nullable = false),
+            StructField(dfCols.searchDuration, LongType, nullable = false),
+            StructField(dfCols.reverseDuration, LongType, nullable = false),
+            StructField(dfCols.detectionDuration, LongType, nullable = false),
+            StructField(dfCols.totalDuration, LongType, nullable = false),
+        ))
 
-//         pivotsDistances.foreach(pD => {
-//             val (instance, distances) = pD
-//             println(s"${instance.id}: ${distances.map(d => s"${d.pivotId}: ${d.distance}").mkString(",\n")}")
-//         })
+        val df = spark.read.format("csv")
+            .option("header", "true")
+            .schema(datasetSchema)
+            .load(datasetPath)
+            .cache();
 
-//         // Initialize kNeighbors with basePivots
-//         val kNeighbors = pivotsDistances.map(tuple => {
-//             val (instance, distances) = tuple
-//             val arr = Array.fill[KNeighbor](k)(null)
-//             distances.foreach(distanceObj => {
-//                 if(distanceObj.pivotId != instance.id && (arr.contains(null) || distanceObj.distance < arr.last.distance)){
-//                     val newKNeighbor = new KNeighbor(distanceObj.pivotId, distanceObj.distance)
-//                     Utils.addNewNeighbor(arr, newKNeighbor)
-//                 }
-//             })
-//             (instance.id, arr)
-//         })
+        df.filter(col(dfCols.roc) > 0.9).orderBy(desc(dfCols.roc)).show(20)
 
-//        println("kNeighbors iniciales:")
-//        kNeighbors.foreach(kn => {
-//            val (instanceId, arr) = kn
-//            var neighbors = ""
-//            if(arr.length > 0){
-//                neighbors = arr.map(n => s"${n.id} - ${n.distance}").mkString(",\n")
-//            }
-//            else{
-//                neighbors = "no tiene"
-//            }
-//            println(s"${instanceId}:\n${neighbors}")
-//        })
+        return
 
-    //     val queryWithInstanceCotas = pivotsDistances.cartesian(pivotsDistances)
-    //         .filter(tuple => tuple._1._1.id != tuple._2._1.id)
-    //         .map(tuple => {
-    //             val (queryTuple, instanceTuple) = tuple
-    //             val (query, queryDistances) = queryTuple
-    //             val (instance, instanceDistances) = instanceTuple
-    //             val reversedQueryDistances = queryDistances.map(distanceObj => (distanceObj.pivotId, distanceObj.distance))
-    //             val reversedInstanceDistances = instanceDistances.map(distanceObj => (distanceObj.pivotId, distanceObj.distance))
-    //             val allDistances = Array(reversedQueryDistances, reversedInstanceDistances).flatten
-    //             val groupedByKey = allDistances.groupBy(tuple => tuple._1)
-    //             val cota = groupedByKey.map(tuple => {
-    //                 val (pivotId, distances) = tuple
-    //                 distances.map(_._2).reduce((x, y) => math.abs(x - y))
-    //             }).max
+        val detectionMethods = Array("antihub", "ranked", "refined")
+        val kValues = Array(1, 5, 10, 25, 50, 100, 200, 400, 600, 800, 1000)
+        val pivotsAmounts = Array(12, 25, 50, 100)
+        val contents = new ArrayBuffer[String]()
 
-    //             (query.id, (instance, cota))
-    //         })
-    //         .groupByKey()
+        // Line plots of rocs for each pivots amount
+        for(pivots <- pivotsAmounts){
+            contents += s"${pivots} pivots"
+            contents += s"k,${detectionMethods.mkString(",")}"
 
-    //     val instancesById = instances.map(instance => (instance.id, instance))
+            for(k <- kValues){
+                val averages = new ArrayBuffer[Double]()
+                for(method <- detectionMethods){
+                    val values = df.filter(
+                        col(dfCols.pivotsAmount) === pivots
+                        && col(dfCols.k) === k
+                        && col(dfCols.detectionMethod) === method
+                        && col(dfCols.searchMethod) === "classic"
+                    )
 
-    //     val allMixed = instancesById.join(queryWithInstanceCotas).join(kNeighbors).map(mixedValues => {
-    //         val (instanceId, values) = mixedValues
-    //         val (tuple, kNeighbors) = values
-    //         val (query, instanceWithCotas) = tuple
+                    val average = findAverageRoc(values.select(dfCols.roc), dfCols.roc)
+                    averages += average
+                }
+                contents += s"$k,${averages.mkString(",")}"
+            }
+            contents += "\n"
+        }
 
-    //         (query, kNeighbors, instanceWithCotas)
-    //     })
+        contents += "\n\n\n"
 
-    //     val result = allMixed.map(tuple => {
-    //         val (query, kNeighbors, instancesWithCotas) = tuple
-    //         instancesWithCotas.filter(instance => !basePivotsIds.contains(instance._1.id)).foreach(pair => {
-    //             val (instance, cota) = pair
-    //             if(kNeighbors.contains(null)){
-    //                 Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, DistanceFunctions.euclidean(query.attributes, instance.attributes)))
-    //             }
-    //             else{
-    //                 if(cota <= kNeighbors.last.distance){
-    //                     val distance = DistanceFunctions.euclidean(query.attributes, instance.attributes)
-    //                     if(distance < kNeighbors.last.distance){
-    //                         Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distance))
-    //                     }
-    //                 }
-    //             }
-    //         })
+        // Line plots of rocs varying pivotsAmount for each detection technique
+        for(detectionMethod <- detectionMethods){
+            contents += s"roc by pivotsAmount ($detectionMethod)"
+            contents += s"k,${pivotsAmounts.mkString(",")}"
+            for(k <- kValues){
+                val averages = new ArrayBuffer[Double]()
+                for(pivots <- pivotsAmounts){
+                    val values = df.filter(
+                        col(dfCols.pivotsAmount) === pivots
+                            && col(dfCols.k) === k
+                            && col(dfCols.detectionMethod) === detectionMethod
+                            && col(dfCols.searchMethod) === "classic"
+                    )
 
-    //         (query.id, kNeighbors)
-    //     }).collect().sortWith((a, b) => a._1 < b._1)
+                    val average = findAverageRoc(values.select(dfCols.roc), dfCols.roc)
+                    averages += average
+                }
+                contents += s"$k,${averages.mkString(",")}"
+            }
+            contents += "\n"
+        }
 
-    //     println(s"kNeighbors tiene length de: ${result.length} y son ${result.map(r => r._1).mkString("Array(", ", ", ")")}")
-    //     println(result.map(t => s"${t._1}:\n\t${t._2.map(n => s"${n.id}: ${n.distance}").mkString(",\n\t")}").mkString("\n\n"))
+        contents += "\n\n\n"
 
-    //     println("Todos los batches tienen el mismo length que k: ", result.forall(pair => pair._2.length == k))
-    //     println(s"Instancia 1 esta bien: ${arraysContainSameIds(result(0)._2.map(_.id), Array("2", "3", "4"))}")
-    //     println(s"Instancia 2 esta bien: ${arraysContainSameIds(result(1)._2.map(_.id), Array("1", "3", "4"))}")
-    //     println(s"Instancia 3 esta bien: ${arraysContainSameIds(result(2)._2.map(_.id), Array("2", "4", "1")) ||
-    //         arraysContainSameIds(result(2)._2.map(_.id), Array("2", "4", "5"))}")
-    //     println(s"Instancia 4 esta bien: ${arraysContainSameIds(result(3)._2.map(_.id), Array("2", "3", "5"))}")
-    //     println(s"Instancia 5 esta bien: ${arraysContainSameIds(result(4)._2.map(_.id), Array("2", "3", "4"))}")
+        // Line plots of time(duration) varying pivotsAmount for each detection technique
+        for(detectionMethod <- detectionMethods){
+            contents += s"total_duration by pivotsAmount ($detectionMethod)"
+            contents += s"k,${pivotsAmounts.mkString(",")}"
+            for(k <- kValues){
+                val averages = new ArrayBuffer[Double]()
+                for(pivots <- pivotsAmounts){
+                    val values = df.filter(
+                        col(dfCols.pivotsAmount) === pivots
+                            && col(dfCols.k) === k
+                            && col(dfCols.detectionMethod) === detectionMethod
+                            && col(dfCols.searchMethod) === "classic"
+                    )
 
+                    val average = findAverageDuration(values.select(dfCols.totalDuration), dfCols.totalDuration)
+                    averages += average
+                }
+                contents += s"$k,${averages.mkString(",")}"
+            }
+            contents += "\n"
+        }
+
+        contents += "\n\n\n"
+
+
+        //Line plot of time(duration) of search phase
+        contents += s"search duration by pivots"
+        contents += s"k,${pivotsAmounts.mkString(",")}"
+        for(k <- kValues){
+            val averages = new ArrayBuffer[Double]()
+            for(pivots <- pivotsAmounts){
+                val values = df.filter(
+                    col(dfCols.pivotsAmount) === pivots
+                        && col(dfCols.k) === k
+                        && col(dfCols.searchMethod) === "classic"
+                )
+
+                val average = findAverageDuration(values.select(dfCols.searchDuration), dfCols.searchDuration)
+                averages += average
+            }
+            contents += s"$k,${averages.mkString(",")}"
+        }
+
+        contents += "\n\n\n"
+
+        // Line plot of rocs for exhaustive search
+        contents += "exhaustive"
+        contents += s"k,${detectionMethods.mkString(",")}"
+        for(k <- kValues){
+            val averages = new ArrayBuffer[Double]()
+            for(method <- detectionMethods){
+                val values = df.filter(
+                    col(dfCols.k) === k
+                    && col(dfCols.detectionMethod) === method
+                    && col(dfCols.searchMethod) === "exhaustive"
+                )
+
+                val average = findAverageRoc(values.select(dfCols.roc), dfCols.roc)
+                averages += average
+            }
+            contents += s"$k,${averages.mkString(",")}"
+        }
+
+        ReaderWriter.writeToFile(experimentsFullPath, contents.mkString("\n"))
     }
 
-    // def arraysContainSameNeighbors(arr1: Array[KNeighbor], arr2: Array[KNeighbor]): Boolean = {
-    //     if(arr1.length != arr2.length) return false
-    //     if(arr1.isEmpty) return false
+    def findAverageRoc(df: DataFrame, rocColName: String): Double = {
+        val length = df.count()
+        df.select(rocColName).rdd.map(r => r.getDouble(0)).reduce(_+_) / length.toDouble
+    }
 
-    //     var sameElements = true
-    //     val arr1Ids = arr1.map(_.id)
-    //     val arr2Ids = arr2.map(_.id)
-    //     var index = 0
-
-    //     while(sameElements && index < arr1Ids.length){
-    //         if(!arr2Ids.contains(arr1Ids(index))) sameElements = false
-    //         index += 1
-    //     }
-
-    //     if(sameElements) return true
-
-    //     val arr1SortedDist = arr1.map(_.distance).sorted
-    //     val arr2SortedDist = arr2.map(_.distance).sorted
-
-    //     arr1SortedDist.zip(arr2SortedDist).forall(pair => pair._1 == pair._2)
-    // }
-
-    // def arraysContainSameIds(arr1: Array[String], arr2: Array[String]): Boolean = {
-    //     if(arr1.length != arr2.length || arr1.isEmpty) return false
-
-    //     val sortedArr1 = arr1.sorted
-    //     val sortedArr2 = arr2.sorted
-
-    //     sortedArr1.sameElements(sortedArr2)
-    // }
+    def findAverageDuration(df: DataFrame, rocColName: String): Double = {
+        val length = df.count()
+        df.select(rocColName).rdd.map(r => r.getLong(0) / 1000).reduce(_+_).toDouble / length.toDouble
+    }
 }

@@ -11,11 +11,20 @@ class Antihub extends DetectionStrategy with Serializable {
             1.0 / count.toDouble
     }
 
-    def antihub(idsWithRNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)] ={
+
+    private def originalNormalizationFunction(value: Double): Double = {
+        1 / (1 + value)
+    }
+
+    def antihub(idsWithRNeighbors: RDD[(Int, Array[RNeighbor])]): RDD[(Int, Double)] ={
         idsWithRNeighbors.map(tuple => (tuple._1, normalizeReverseNeighborsCount(tuple._2.length)))
     }
 
-    override def detect(reverseNeighbors: RDD[(String, Array[RNeighbor])]): RDD[(String, Double)] = {
+    def antihubOriginal(idsWithRNeighbors: RDD[(Int, Array[RNeighbor])]): RDD[(Int, Double)] ={
+        idsWithRNeighbors.map(tuple => (tuple._1, originalNormalizationFunction(tuple._2.length)))
+    }
+
+    override def detect(reverseNeighbors: RDD[(Int, Array[RNeighbor])]): RDD[(Int, Double)] = {
         antihub(reverseNeighbors)
     }
 }

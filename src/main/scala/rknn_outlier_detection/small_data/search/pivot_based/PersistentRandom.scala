@@ -10,7 +10,7 @@ class PersistentRandom(retries: Int, objectSet: Array[Instance]) extends PivotSe
 
     def findPivotsCoefficientOfVariation(instances: Array[Instance], pivots: Array[Instance], distanceFunction: DistanceFunction): Double = {
 
-        val cells = mutable.Map[String, ArrayBuffer[Instance]]()
+        val cells = mutable.Map[Int, ArrayBuffer[Instance]]()
 
         pivots.foreach(pivot => {
 //            println(s"Creating cell for pivot ${pivot.id}")
