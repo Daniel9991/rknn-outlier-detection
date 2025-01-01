@@ -11,7 +11,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import rknn_outlier_detection.big_data.detection.{Antihub, AntihubRefined, DetectionStrategy, RankedReverseCount}
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
-import rknn_outlier_detection.big_data.search.pivot_based.PkNN
+import rknn_outlier_detection.big_data.search.pivot_based.{GroupedByPivot, PkNN}
 import rknn_outlier_detection.big_data.search.reverse_knn.NeighborsReverser
 import rknn_outlier_detection.shared.utils.Utils.addNewNeighbor
 import rknn_outlier_detection.small_data.search.pivot_based.{FarthestFirstTraversal, PersistentRandom}
@@ -799,7 +799,7 @@ object BigDataExperiment {
 //            val pivotsIds = Array("6903","3878","7022","34506","35777","15998","47636","49858","35560","47169","30385","32323")
 //            val pivots = instances.filter(i => pivotsIds.contains(i.id)).collect()
 
-            val kNeighbors = new PkNN(pivots, 1000).findApproximateKNeighbors(instances, k, euclidean, sc).cache()
+            val kNeighbors = new GroupedByPivot(pivots).findApproximateKNeighbors(instances, k, euclidean, sc).cache()
 
             if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
                 throw new Exception("There are element with null neighbors")
@@ -1056,27 +1056,31 @@ object BigDataExperiment {
             val instances = instancesAndClassification.map(_._1)
 
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
-            val kNeighbors = if(method == "classic"){
-                new PkNN(pivots, 1000).findApproximateKNeighbors(instances, k, euclidean, sc).cache()
+            val kNeighbors =  (if(method == "classic"){
+                new GroupedByPivot(pivots).findApproximateKNeighbors(instances, k, euclidean, sc).cache()
             }
             else if(method == "broadcasted"){
-                new PkNN(pivots, 1000).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
+                new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
             }
-            else if(method == "repartitioned"){
-                new PkNN(pivots, 1000).findApproximateKNeighborsRepartitioned(instances, k, euclidean, sc).cache()
+            else if(method == "shorty"){
+                new GroupedByPivot(pivots).findApproximateKNeighborsShorty(instances, k, euclidean, sc).cache()
             }
             else{
                 throw new Exception("There is no search method")
-            }
+            }).cache()
 
-            if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
-                throw new Exception("There are elements with null neighbors")
-            }
-
+            kNeighbors.count()
             val onFinishSearch = System.nanoTime
             val searchDuration = (onFinishSearch - onStart) / 1000000
 
-            val line = s"$k,$pivotsAmount,$seed,$method,$searchDuration"
+            val rNeighbors = NeighborsReverser.findReverseNeighbors(kNeighbors)
+            val antihub = new Antihub().antihub(rNeighbors)
+
+            val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
+            val predictionsAndLabelsAntihub = classifications.join(antihub).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val detectionMetricsAntihub = new BinaryClassificationMetrics(predictionsAndLabelsAntihub)
+
+            val line = s"$k,$pivotsAmount,$seed,$method,$searchDuration,${detectionMetricsAntihub.areaUnderROC()}"
             saveStatistics(line, file=s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\search-results.csv")
 
             println(s"---------------Done executing-------------------")
@@ -1117,7 +1121,7 @@ object BigDataExperiment {
             val instances = instancesAndClassification.map(_._1)
 
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
-            val kNeighbors = if(method == "classic") new PkNN(pivots, 1000).findApproximateKNeighbors(instances, k, euclidean, sc).cache() else new PkNN(pivots, 1000).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
+            val kNeighbors = if(method == "classic") new GroupedByPivot(pivots).findApproximateKNeighbors(instances, k, euclidean, sc).cache() else new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
 
             if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
                 throw new Exception("There are elements with null neighbors")
@@ -1235,7 +1239,7 @@ object BigDataExperiment {
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=57124) // seed=87654 seed2=458212 seed3=57124
 
             val onStartUnstructured = System.nanoTime
-            val unstructuredKNeighbors = new PkNN(pivots, 1000).findApproximateKNeighbors(instances, k, euclidean, spark.sparkContext).cache()
+            val unstructuredKNeighbors = new GroupedByPivot(pivots).findApproximateKNeighbors(instances, k, euclidean, spark.sparkContext).cache()
             if(unstructuredKNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
                 throw new Exception("There are elements with null neighbors in unstructured")
             }
