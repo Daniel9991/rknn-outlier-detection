@@ -7,7 +7,10 @@ import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.utils.Utils
 import rknn_outlier_detection.shared.utils.Utils.addNewNeighbor
 
-class GroupedByPivot(_pivots: Array[Instance]) {
+import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
+
+class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
 
     def findApproximateKNeighbors(instances: RDD[Instance], k: Int, distanceFunction: (Array[Double], Array[Double]) => Double, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
         val pivots = sc.broadcast(_pivots)
@@ -243,7 +246,11 @@ class GroupedByPivot(_pivots: Array[Instance]) {
         completeCoreKNNs.union(incompleteCoreKNNsFixed)
     }
 
-    def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
+    type PivotWithCountAndDist = (Instance, Int, Double)
+    type PivotWithCount = (Instance, Int)
+
+    def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext, tailrec: Boolean = true): RDD[(Int, Array[KNeighbor])] = {
+
         val pivots = sc.broadcast(_pivots)
 
         // Create cells
@@ -258,20 +265,13 @@ class GroupedByPivot(_pivots: Array[Instance]) {
         val pivotsWithCounts = sc.broadcast(cells.mapValues{_ => 1}.reduceByKey{_+_}.collect)
 
         val instanceToPivots = instances.flatMap(instance => {
-            val sortedPivots = pivotsWithCounts.value
-                .map(pivot => (pivot, distanceFunction(pivot._1.data, instance.data)))
-                .sortBy(_._2)
+            val pivotsWithCountAndDist = pivotsWithCounts.value
+                .map(pivot => (pivot._1, pivot._2, distanceFunction(pivot._1.data, instance.data)))
 
-            var accumulatedCandidates = 0
-            var accumulatedPivotsAmount = 0
-            sortedPivots.foreach(pair => {
-                if(accumulatedCandidates < k + 1){
-                    accumulatedCandidates += pair._1._2
-                    accumulatedPivotsAmount += 1
-                }
-            })
-
-            sortedPivots.slice(0, accumulatedPivotsAmount).map(pivot => (pivot._1._1, instance))
+            if(tailrec)
+                selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
+            else
+                selectMinimumClosestPivotsIter(instance, k, pivotsWithCountAndDist)
         })
 
         val coreKNNs = instanceToPivots.join(cells)
@@ -298,5 +298,40 @@ class GroupedByPivot(_pivots: Array[Instance]) {
             )
 
         coreKNNs.map{case (instance, kNeighbors) => (instance.id, kNeighbors)}
+    }
+
+    def selectMinimumClosestPivotsIter(instance: Instance, k: Int, pivots: Array[PivotWithCountAndDist]): Array[(Instance, Instance)] = {
+        val sortedPivots = pivots
+            .sortBy{case (_, _, dist) => dist}
+
+        var accumulatedCount = 0
+        var accumulatedPivots = 0
+        sortedPivots.foreach(pivot => {
+            if(accumulatedCount < k + 1){
+                accumulatedCount += pivot._2
+                accumulatedPivots += 1
+            }
+        })
+
+        sortedPivots.slice(0, accumulatedPivots).map(pivot => (pivot._1, instance))
+    }
+
+    def selectMinimumClosestPivotsRec(instance: Instance, k: Int, pivots: Array[PivotWithCountAndDist]): Array[(Instance, Instance)] = {
+        @tailrec
+        def minimumClosestPivotsTailRec(instance: Instance, k: Int, remainingPivots: Array[PivotWithCountAndDist], selectedPivots: ArrayBuffer[PivotWithCount]): Array[(Instance, Instance)] = {
+            if(remainingPivots.isEmpty || (selectedPivots.nonEmpty && selectedPivots.map{case (_, count) => count}.sum >= k)){
+                selectedPivots.toArray.map{case (pivot, _) => (pivot, instance)}
+            }
+            else{
+                val closestPivot = remainingPivots.minBy{case (_, _, distanceToPivot) => distanceToPivot}
+                val formatted: PivotWithCount = (closestPivot._1, closestPivot._2)
+                selectedPivots += formatted
+
+                val updatedRemaining = remainingPivots.filter(p => p._1.id != closestPivot._1.id)
+                minimumClosestPivotsTailRec(instance, k, updatedRemaining, selectedPivots)
+            }
+        }
+
+        minimumClosestPivotsTailRec(instance, k, pivots, ArrayBuffer.empty[PivotWithCount])
     }
 }

@@ -20,7 +20,7 @@ import rknn_outlier_detection.small_data.search.pivot_based.{FarthestFirstTraver
 object BigDataExperiment {
 
     def main(args: Array[String]): Unit = {
-        comparingSearchMethods(args)
+        mainExperiment(args)
     }
 
 //    def compareReverseNeighborsCountBetweenApproximateAndExactSearch(): Unit ={
@@ -1095,11 +1095,12 @@ object BigDataExperiment {
 
     def mainExperiment(args: Array[String]): Unit = {
 
-        val pivotsAmount = args(0).toInt
-        val k = args(1).toInt
-        val method = args(2)
+        val nodes = args(0).toInt
+        val pivotsAmount = args(1).toInt
+        val k = args(2).toInt
         val seed = args(3).toInt
-        val datasetSize = 50000
+        val datasetSize = args(4).toInt
+        val method = args(5)
 
         try{
             val fullPath = System.getProperty("user.dir")
@@ -1121,11 +1122,10 @@ object BigDataExperiment {
             val instances = instancesAndClassification.map(_._1)
 
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
-            val kNeighbors = if(method == "classic") new GroupedByPivot(pivots).findApproximateKNeighbors(instances, k, euclidean, sc).cache() else new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
+            val kNeighbors = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
 
-            if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
+            if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0)
                 throw new Exception("There are elements with null neighbors")
-            }
 
             val onFinishSearch = System.nanoTime
             val searchDuration = (onFinishSearch - onStart) / 1000000
@@ -1135,69 +1135,44 @@ object BigDataExperiment {
             rNeighbors.count()
             val onFinishReverse = System.nanoTime
             val reverseDuration = (onFinishReverse - onReverse) / 1000000
+            kNeighbors.unpersist()
 
             val onDetection = System.nanoTime
+            val antihub = new Antihub().antihub(rNeighbors).cache()
+            antihub.count()
+            val onFinishAntihub = System.nanoTime
+            val ranked = new RankedReverseCount(0.7, k).calculateAnomalyDegree(rNeighbors, k).cache()
+            ranked.count()
+            val onFinishRanked = System.nanoTime
+            val refined = new AntihubRefined(0.2, 0.3).antihubRefined(rNeighbors, antihub).cache()
+            refined.count()
+            val onFinishRefined = System.nanoTime
 
-            val antihubAsUsual = new Antihub().antihub(rNeighbors).cache()
-            val antihubOriginal = new Antihub().antihubOriginal(rNeighbors).cache()
-//            antihub.count()
-//            val onFinishAntihub = System.nanoTime
-            val ranked1 = new RankedReverseCount(0.1, k).calculateAnomalyDegree(rNeighbors, k).cache()
-            val ranked3 = new RankedReverseCount(0.3, k).calculateAnomalyDegree(rNeighbors, k).cache()
-            val ranked5 = new RankedReverseCount(0.5, k).calculateAnomalyDegree(rNeighbors, k).cache()
-            val ranked7 = new RankedReverseCount(0.7, k).calculateAnomalyDegree(rNeighbors, k).cache()
-            val ranked9 = new RankedReverseCount(0.9, k).calculateAnomalyDegree(rNeighbors, k).cache()
-//            ranked.count()
-//            val onFinishRanked = System.nanoTime
-//            val refined = new AntihubRefined(0.2, 0.3).antihubRefined(rNeighbors, antihub).cache()
-//            refined.count()
-//            val onFinishRefined = System.nanoTime
-//
-//            val antihubDuration = (onFinishAntihub - onDetection) / 1000000
-//            val rankedDuration = (onFinishRanked - onFinishAntihub) / 1000000
-//            val refinedDuration = ((onFinishRefined - onFinishRanked) / 1000000) + antihubDuration
+            val antihubDuration = (onFinishAntihub - onDetection) / 1000000
+            val rankedDuration = (onFinishRanked - onFinishAntihub) / 1000000
+            val refinedDuration = ((onFinishRefined - onFinishRanked) / 1000000) + antihubDuration
 
             val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2)).cache()
-            val predictionsAndLabelsAntihubAsUsual = classifications.join(antihubAsUsual).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsAntihubAsUsual = new BinaryClassificationMetrics(predictionsAndLabelsAntihubAsUsual)
 
-            val predictionsAndLabelsAntihubOriginal = classifications.join(antihubOriginal).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsAntihubOriginal = new BinaryClassificationMetrics(predictionsAndLabelsAntihubOriginal)
+            val predictionsAndLabelsAntihub = classifications.join(antihub).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val detectionMetricsAntihub = new BinaryClassificationMetrics(predictionsAndLabelsAntihub)
 
-            val predictionsAndLabelsRanked1 = classifications.join(ranked1).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsRanked1 = new BinaryClassificationMetrics(predictionsAndLabelsRanked1)
+            val predictionsAndLabelsRanked = classifications.join(ranked).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val detectionMetricsRanked = new BinaryClassificationMetrics(predictionsAndLabelsRanked)
 
-            val predictionsAndLabelsRanked3 = classifications.join(ranked3).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsRanked3 = new BinaryClassificationMetrics(predictionsAndLabelsRanked3)
-
-            val predictionsAndLabelsRanked5 = classifications.join(ranked5).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsRanked5 = new BinaryClassificationMetrics(predictionsAndLabelsRanked5)
-
-            val predictionsAndLabelsRanked7 = classifications.join(ranked7).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsRanked7 = new BinaryClassificationMetrics(predictionsAndLabelsRanked7)
-
-            val predictionsAndLabelsRanked9 = classifications.join(ranked9).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsRanked9 = new BinaryClassificationMetrics(predictionsAndLabelsRanked9)
-
-            val line = s"$k,$pivotsAmount,$seed,${detectionMetricsAntihubAsUsual.areaUnderROC()},${detectionMetricsAntihubOriginal.areaUnderROC()},${detectionMetricsRanked1.areaUnderROC()},${detectionMetricsRanked3.areaUnderROC()},${detectionMetricsRanked5.areaUnderROC()},${detectionMetricsRanked7.areaUnderROC()},${detectionMetricsRanked9.areaUnderROC()}"
-            saveStatistics(line, file=s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\antihub-ranked-experiments.csv")
-
-//            val predictionsAndLabelsRanked = classifications.join(ranked).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-//            val detectionMetricsRanked = new BinaryClassificationMetrics(predictionsAndLabelsRanked)
-
-//            val predictionsAndLabelsRefined = classifications.join(refined).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-//            val detectionMetricsRefined = new BinaryClassificationMetrics(predictionsAndLabelsRefined)
+            val predictionsAndLabelsRefined = classifications.join(refined).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val detectionMetricsRefined = new BinaryClassificationMetrics(predictionsAndLabelsRefined)
 
 //            val elapsedTimeAntihub = s"s: ${searchDuration} - r: ${reverseDuration} - d: ${antihubDuration} = ${searchDuration + reverseDuration + antihubDuration}ms"
 //            val elapsedTimeRanked = s"s: ${searchDuration} - r: ${reverseDuration} - d: ${rankedDuration} = ${searchDuration + reverseDuration + rankedDuration}ms"
 //            val elapsedTimeRefined = s"s: ${searchDuration} - r: ${reverseDuration} - d: ${refinedDuration} = ${searchDuration + reverseDuration + refinedDuration}ms"
 
-//            val antihubLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,antihub,${detectionMetricsAntihub.areaUnderROC()},${detectionMetricsAntihub.areaUnderPR()},$searchDuration,$reverseDuration,$antihubDuration,${searchDuration + reverseDuration + antihubDuration}"
-//            saveStatistics(antihubLine)
-//            val rankedLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,ranked,${detectionMetricsRanked.areaUnderROC()},${detectionMetricsRanked.areaUnderPR()},$searchDuration,$reverseDuration,$rankedDuration,${searchDuration + reverseDuration + rankedDuration}"
-//            saveStatistics(rankedLine)
-//            val refinedLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,refined,${detectionMetricsRefined.areaUnderROC()},${detectionMetricsRefined.areaUnderPR()},$searchDuration,$reverseDuration,$refinedDuration,${searchDuration + reverseDuration + refinedDuration}"
-//            saveStatistics(refinedLine)
+            val antihubLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,antihub,${detectionMetricsAntihub.areaUnderROC()},${detectionMetricsAntihub.areaUnderPR()},$searchDuration,$reverseDuration,$antihubDuration,${searchDuration + reverseDuration + antihubDuration}"
+            saveStatistics(antihubLine)
+            val rankedLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,ranked,${detectionMetricsRanked.areaUnderROC()},${detectionMetricsRanked.areaUnderPR()},$searchDuration,$reverseDuration,$rankedDuration,${searchDuration + reverseDuration + rankedDuration}"
+            saveStatistics(rankedLine)
+            val refinedLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,refined,${detectionMetricsRefined.areaUnderROC()},${detectionMetricsRefined.areaUnderPR()},$searchDuration,$reverseDuration,$refinedDuration,${searchDuration + reverseDuration + refinedDuration}"
+            saveStatistics(refinedLine)
 
             println(s"---------------Done executing-------------------")
 //            System.in.read()
@@ -1268,7 +1243,7 @@ object BigDataExperiment {
     }
 
     def saveStatistics(line: String, file: String = ""): Unit = {
-        val filename = if(file == "") s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\structured-results.csv" else file
+        val filename = if(file == "") s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\fulldb-structured-results.csv" else file
         val previousRecordsText = ReaderWriter.readCSV(filename, hasHeader=false).map(line => line.mkString(",")).mkString("\n")
         val updatedRecords = s"$previousRecordsText\n$line"
         ReaderWriter.writeToFile(filename, updatedRecords)

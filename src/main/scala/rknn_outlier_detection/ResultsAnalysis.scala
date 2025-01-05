@@ -11,7 +11,7 @@ import rknn_outlier_detection.shared.utils.{ReaderWriter, Utils}
 import scala.collection.immutable.HashMap
 import scala.collection.mutable.ArrayBuffer
 
-object Main {
+object ResultsAnalysis {
 
     def main(args: Array[String]): Unit = {
 
@@ -78,8 +78,6 @@ object Main {
             .cache();
 
         df.filter(col(dfCols.roc) > 0.9).orderBy(desc(dfCols.roc)).show(20)
-
-        return
 
         val detectionMethods = Array("antihub", "ranked", "refined")
         val kValues = Array(1, 5, 10, 25, 50, 100, 200, 400, 600, 800, 1000)
