@@ -1095,12 +1095,18 @@ object BigDataExperiment {
 
     def mainExperiment(args: Array[String]): Unit = {
 
-        val nodes = args(0).toInt
-        val pivotsAmount = args(1).toInt
-        val k = args(2).toInt
-        val seed = args(3).toInt
-        val datasetSize = args(4).toInt
-        val method = args(5)
+//        val nodes = args(0).toInt
+//        val pivotsAmount = args(1).toInt
+//        val k = args(2).toInt
+//        val seed = args(3).toInt
+//        val datasetSize = args(4).toInt
+//        val method = args(5)
+        val nodes = 2
+        val pivotsAmount = 142
+        val k = 600
+        val seed = 12541
+        val datasetSize = -1
+        val method = "broadcastedTailRec"
 
         try{
             val fullPath = System.getProperty("user.dir")
@@ -1110,7 +1116,14 @@ object BigDataExperiment {
 
             val onStart = System.nanoTime
 
-            val sc = new SparkContext(new SparkConf().setAppName("Scaled creditcard test"))
+//            val sc = new SparkContext(new SparkConf().setAppName("Scaled creditcard test"))
+            val sc = new SparkContext(
+                new SparkConf()
+                    .setAppName("Scaled creditcard test")
+                    .setMaster("local[*]")
+                    .set("spark.default.parallelism", "48")
+                    .set("spark.sql.shuffle.partitions", "48")
+            )
 
             val rawData = sc.textFile(datasetPath).map(line => line.split(","))
             val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
@@ -1124,8 +1137,10 @@ object BigDataExperiment {
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
             val kNeighbors = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
 
-            if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0)
+            if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0) {
+                println(s"Elements with null neighbors: ${kNeighbors.filter(tuple => tuple._2.contains(null)).map(data => data._1).collect().mkString(", ")}")
                 throw new Exception("There are elements with null neighbors")
+            }
 
             val onFinishSearch = System.nanoTime
             val searchDuration = (onFinishSearch - onStart) / 1000000
@@ -1175,14 +1190,15 @@ object BigDataExperiment {
             saveStatistics(refinedLine)
 
             println(s"---------------Done executing-------------------")
-//            System.in.read()
-//            sc.stop()
         }
         catch{
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
             }
+        }
+        finally{
+            System.in.read()
         }
     }
 
