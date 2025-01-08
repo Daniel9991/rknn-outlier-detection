@@ -2,7 +2,7 @@ package rknn_outlier_detection
 
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
 import org.apache.spark.{SparkConf, SparkContext}
-import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
+import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 import rknn_outlier_detection.shared.utils.{ReaderWriter, Utils}
 import rknn_outlier_detection.big_data.search.exhaustive_knn.ExhaustiveBigData
 import rknn_outlier_detection.shared.distance.DistanceFunctions
@@ -1095,18 +1095,13 @@ object BigDataExperiment {
 
     def mainExperiment(args: Array[String]): Unit = {
 
-//        val nodes = args(0).toInt
-//        val pivotsAmount = args(1).toInt
-//        val k = args(2).toInt
-//        val seed = args(3).toInt
-//        val datasetSize = args(4).toInt
-//        val method = args(5)
-        val nodes = 2
-        val pivotsAmount = 142
-        val k = 600
-        val seed = 12541
-        val datasetSize = -1
-        val method = "broadcastedTailRec"
+        val nodes = args(0).toInt
+        val pivotsAmount = args(1).toInt
+        val k = args(2).toInt
+        val seed = args(3).toInt
+        val datasetSize = args(4).toInt
+        val method = args(5)
+        val useKryo = args(6) == "true"
 
         try{
             val fullPath = System.getProperty("user.dir")
@@ -1116,14 +1111,16 @@ object BigDataExperiment {
 
             val onStart = System.nanoTime
 
-//            val sc = new SparkContext(new SparkConf().setAppName("Scaled creditcard test"))
-            val sc = new SparkContext(
-                new SparkConf()
-                    .setAppName("Scaled creditcard test")
-                    .setMaster("local[*]")
-                    .set("spark.default.parallelism", "48")
-                    .set("spark.sql.shuffle.partitions", "48")
-            )
+            val conf = if(useKryo){
+                val config = new SparkConf().setAppName("Scaled creditcard test")
+                config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+                config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
+            }
+            else {
+                new SparkConf().setAppName("Scaled creditcard test")
+            }
+
+            val sc = new SparkContext(conf)
 
             val rawData = sc.textFile(datasetPath).map(line => line.split(","))
             val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
@@ -1132,13 +1129,12 @@ object BigDataExperiment {
                 val classification = if (line.last == "1") "1.0" else "0.0"
                 (new Instance(index.toInt, attributes), classification)
             }).cache()
-            val instances = instancesAndClassification.map(_._1)
+            val instances = instancesAndClassification.map(_._1).cache()
 
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
             val kNeighbors = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
 
             if(kNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0) {
-                println(s"Elements with null neighbors: ${kNeighbors.filter(tuple => tuple._2.contains(null)).map(data => data._1).collect().mkString(", ")}")
                 throw new Exception("There are elements with null neighbors")
             }
 
@@ -1182,11 +1178,11 @@ object BigDataExperiment {
 //            val elapsedTimeRanked = s"s: ${searchDuration} - r: ${reverseDuration} - d: ${rankedDuration} = ${searchDuration + reverseDuration + rankedDuration}ms"
 //            val elapsedTimeRefined = s"s: ${searchDuration} - r: ${reverseDuration} - d: ${refinedDuration} = ${searchDuration + reverseDuration + refinedDuration}ms"
 
-            val antihubLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,antihub,${detectionMetricsAntihub.areaUnderROC()},${detectionMetricsAntihub.areaUnderPR()},$searchDuration,$reverseDuration,$antihubDuration,${searchDuration + reverseDuration + antihubDuration}"
+            val antihubLine = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,antihub,${detectionMetricsAntihub.areaUnderROC()},${detectionMetricsAntihub.areaUnderPR()},$searchDuration,$reverseDuration,$antihubDuration,${searchDuration + reverseDuration + antihubDuration}"
             saveStatistics(antihubLine)
-            val rankedLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,ranked,${detectionMetricsRanked.areaUnderROC()},${detectionMetricsRanked.areaUnderPR()},$searchDuration,$reverseDuration,$rankedDuration,${searchDuration + reverseDuration + rankedDuration}"
+            val rankedLine = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,ranked,${detectionMetricsRanked.areaUnderROC()},${detectionMetricsRanked.areaUnderPR()},$searchDuration,$reverseDuration,$rankedDuration,${searchDuration + reverseDuration + rankedDuration}"
             saveStatistics(rankedLine)
-            val refinedLine = s"${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,refined,${detectionMetricsRefined.areaUnderROC()},${detectionMetricsRefined.areaUnderPR()},$searchDuration,$reverseDuration,$refinedDuration,${searchDuration + reverseDuration + refinedDuration}"
+            val refinedLine = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$method,$seed,refined,${detectionMetricsRefined.areaUnderROC()},${detectionMetricsRefined.areaUnderPR()},$searchDuration,$reverseDuration,$refinedDuration,${searchDuration + reverseDuration + refinedDuration}"
             saveStatistics(refinedLine)
 
             println(s"---------------Done executing-------------------")
@@ -1196,9 +1192,6 @@ object BigDataExperiment {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
             }
-        }
-        finally{
-            System.in.read()
         }
     }
 

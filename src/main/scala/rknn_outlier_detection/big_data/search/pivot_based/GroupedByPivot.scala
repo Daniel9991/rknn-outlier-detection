@@ -249,7 +249,7 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
     type PivotWithCountAndDist = (Instance, Int, Double)
     type PivotWithCount = (Instance, Int)
 
-    def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext, tailrec: Boolean = true): RDD[(Int, Array[KNeighbor])] = {
+    def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
 
         val pivots = sc.broadcast(_pivots)
 
@@ -264,18 +264,15 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
 
         val pivotsWithCounts = sc.broadcast(cells.mapValues{_ => 1}.reduceByKey{_+_}.collect)
 
-        val instanceToPivots = instances.flatMap(instance => {
+        val pivotsToInstance = instances.flatMap(instance => {
             val pivotsWithCountAndDist = pivotsWithCounts.value
                 .map(pivot => (pivot._1, pivot._2, distanceFunction(pivot._1.data, instance.data)))
 
-            if(tailrec)
-                selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
-            else
-                selectMinimumClosestPivotsIter(instance, k, pivotsWithCountAndDist)
+            selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
         })
 
-        val coreKNNs = instanceToPivots.join(cells)
-            .filter{case (pivot, (ins1, ins2)) => ins1.id != ins2.id}
+        val coreKNNs = pivotsToInstance.join(cells)
+            .filter{case (_, (ins1, ins2)) => ins1.id != ins2.id}
             .map(tuple => (tuple._2._1, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
             .aggregateByKey(Array.fill[KNeighbor](k)(null))(
                 (acc, neighbor) => {
@@ -319,7 +316,7 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
     def selectMinimumClosestPivotsRec(instance: Instance, k: Int, pivots: Array[PivotWithCountAndDist]): Array[(Instance, Instance)] = {
         @tailrec
         def minimumClosestPivotsTailRec(instance: Instance, k: Int, remainingPivots: Array[PivotWithCountAndDist], selectedPivots: ArrayBuffer[PivotWithCount]): Array[(Instance, Instance)] = {
-            if(remainingPivots.isEmpty || (selectedPivots.nonEmpty && selectedPivots.map{case (_, count) => count}.sum >= k)){
+            if(remainingPivots.isEmpty || (selectedPivots.nonEmpty && selectedPivots.map{case (_, count) => count}.sum > k)){
                 selectedPivots.toArray.map{case (pivot, _) => (pivot, instance)}
             }
             else{

@@ -1,11 +1,33 @@
 package rknn_outlier_detection
 
-import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
-import rknn_outlier_detection.big_data.alternative_methods.SameThingByPartition
 import rknn_outlier_detection.shared.custom_objects.Instance
 
+import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
+
 object SameThingByPartitionTest {
+    type PivotWithCountAndDist = (Int, Int, Double)
+    type PivotWithCount = (Int, Int)
+
+    def selectMinimumClosestPivotsRec(instance: Instance, k: Int, pivots: Array[PivotWithCountAndDist]): Array[(Int, Instance)] = {
+        @tailrec
+        def minimumClosestPivotsTailRec(instance: Instance, k: Int, remainingPivots: Array[PivotWithCountAndDist], selectedPivots: ArrayBuffer[PivotWithCount]): Array[(Int, Instance)] = {
+            if(remainingPivots.isEmpty || (selectedPivots.nonEmpty && selectedPivots.map{case (_, count) => count}.sum > k)){
+                selectedPivots.toArray.map{case (pivot, _) => (pivot, instance)}
+            }
+            else{
+                val closestPivot = remainingPivots.minBy{case (_, _, distanceToPivot) => distanceToPivot}
+                val formatted: PivotWithCount = (closestPivot._1, closestPivot._2)
+                selectedPivots += formatted
+
+                val updatedRemaining = remainingPivots.filter(p => p._1 != closestPivot._1)
+                minimumClosestPivotsTailRec(instance, k, updatedRemaining, selectedPivots)
+            }
+        }
+
+        minimumClosestPivotsTailRec(instance, k, pivots, ArrayBuffer.empty[PivotWithCount])
+    }
+
     def main(args: Array[String]): Unit = {
         val datasetSize = 50000
         val k = 800
@@ -20,38 +42,186 @@ object SameThingByPartitionTest {
 
             val onStart = System.nanoTime
 
-            val sc = new SparkContext(new SparkConf().setAppName("Scaled creditcard test"))
+            val instance = new Instance(1104, Array(0.9383754089984084,0.7801823024782355,0.8754042392108768,0.20034470843144622,0.7676937660383255,0.2505112945071473,0.27331564467329583,0.7807906796689053,0.4534223833054595,0.4976030540485129,0.2864186077948019,0.7250342154190792,0.5136247733337271,0.6313173088401046,0.321233871278782,0.46801733298993886,0.7001935756034378,0.596042170950561,0.4250656920737251,0.580387190431085,0.557491596248928,0.4800684390651069,0.6623913515256975,0.47695099971901267,0.5978828603103363,0.39141791569409934,0.41224039057005935,0.3110666192252702,9.692049716711898E-5))
 
-            val rawData = sc.textFile(datasetPath).map(line => line.split(","))
-            val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
-                val (line, index) = tuple
-                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-                val classification = if (line.last == "1") "1.0" else "0.0"
-                (new Instance(index.toInt, attributes), classification)
-            }).cache()
-            val instances = instancesAndClassification.map(_._1)
-            val repartitioned = instances.repartition(16)
-            val antihub = SameThingByPartition.detectAnomalies(repartitioned, pivotsAmount, seed, k, euclidean, sc)
-            antihub.cache()
-            antihub.count()
+            val pivotsWithCountAndDist = Array(
+                (278784,464,0.3891294212591302),
+                (192960,138,0.4817149060243783),
+                (83569,810,0.3001723096026398),
+                (10225,380,0.3761073240007707),
+                (14113,2063,0.2974691845608693),
+                (237890,1110,0.2610593896773603),
+                (166274,916,0.2980113211037591),
+                (60675,898,0.2630590703326289),
+                (247971,349,0.23338762130304772),
+                (106372,1688,0.3017434462961014),
+                (260260,2740,0.2542037205801349),
+                (225700,2760,0.2852734109534892),
+                (34516,162,0.2842273312350455),
+                (197188,778,0.277422526380459),
+                (133877,2019,0.3366995636811049),
+                (66245,739,0.2765532503739726),
+                (147317,3739,0.22577398433000295),
+                (283494,4499,0.2859757399306626),
+                (138822,567,0.3622698107671911),
+                (120966,1683,0.22811852352400858),
+                (223830,1449,0.24358852038657794),
+                (174726,646,0.3971436355307223),
+                (30678,353,0.33228067660658517),
+                (77046,600,0.10105948667944392),
+                (93558,1276,0.22816918138344175),
+                (176455,337,0.26314852677340733),
+                (223591,1206,0.31087754192023886),
+                (138392,1825,0.26267609135150805),
+                (236409,2847,0.2318923013866467),
+                (155961,1989,0.310188505400673),
+                (537,3606,0.33589712047527903),
+                (110457,2190,0.27513742963636273),
+                (197577,3675,0.2685208527278464),
+                (45369,2202,0.20904422223007377),
+                (204539,1650,0.2737611631976897),
+                (50939,1430,0.23206198465669192),
+                (23579,9211,0.1999275315441512),
+                (170507,292,0.34533021786372603),
+                (255612,5247,0.27024114303792335),
+                (65532,2064,0.241533061291099),
+                (124668,4872,0.29945697765637),
+                (52284,688,0.4458009513595938),
+                (101772,1883,0.1607353844541195),
+                (250140,1432,0.34850195746377916),
+                (207564,2791,0.32649804215582523),
+                (201324,3381,0.27220543750324927),
+                (249516,2876,0.29072937714393976),
+                (49309,3537,0.3144151354335239),
+                (74317,2494,0.3986792122272857),
+                (266989,2471,0.22592292344304557),
+                (98846,1987,0.3160505620059222),
+                (176895,2485,0.21618174443604612),
+                (210111,1376,0.27360518266306744),
+                (15039,919,0.25186076218089126),
+                (180351,794,0.22726402736955104),
+                (147328,2129,0.42617653426219526),
+                (175264,952,0.34232327759667386),
+                (240833,1082,0.3676437688459954),
+                (117521,4352,0.31224865843728494),
+                (219521,6356,0.2125645475365073),
+                (263394,1719,0.23386892523501004),
+                (67315,855,0.2976986982283082),
+                (147427,893,0.3510649022215621),
+                (56563,4509,0.23349282425866305),
+                (172533,2132,0.30582868725207374),
+                (269973,6708,0.188831057893767),
+                (9863,507,0.3644472799589301),
+                (34871,1422,0.44653845081865823),
+                (28152,1348,0.35958205913322894),
+                (136392,968,0.45771099819680316),
+                (77784,3050,0.293020494111554),
+                (76969,681,0.3498595525595444),
+                (45433,981,0.33124897687073657),
+                (177530,513,0.3475266829392956),
+                (242138,4032,0.29980070792759883),
+                (253899,1338,0.35115513637300094),
+                (149163,818,0.34177339360686104),
+                (63195,1326,0.21518865704450177),
+                (233739,221,0.34440011655083985),
+                (268539,644,0.23717536303476325),
+                (158715,1336,0.24063463269798252),
+                (119884,306,0.27394399142233217),
+                (232108,1189,0.2461983148682801),
+                (44860,1233,0.25795207944052645),
+                (17933,676,0.15573508387772275),
+                (141581,3228,0.2210157748738247),
+                (228221,2269,0.26424519009801206),
+                (219917,1939,0.2946853358520695),
+                (143501,1515,0.2707109809293414),
+                (275117,955,0.2588120968015868),
+                (30222,3377,0.342273692931241),
+                (117151,736,0.31187770851718316),
+                (60607,1007,0.3231001114004578),
+                (265663,417,0.3282183312673742),
+                (185311,3985,0.2574493437790518),
+                (188144,1568,0.25509016595478634),
+                (115616,2048,0.2959792651329197),
+                (210224,980,0.34299819724201447),
+                (261776,461,0.4108201142905226),
+                (113504,1259,0.3824327749033438),
+                (193040,842,0.27774602089300193),
+                (197793,2143,0.3225405522042163),
+                (117345,460,0.413027685932416),
+                (12322,1396,0.34440264248559194),
+                (73522,4233,0.25494542618376936),
+                (125170,7041,0.19867398083941054),
+                (58548,1215,0.33740092931417415),
+                (25764,1770,0.2487593435531169),
+                (202452,5613,0.2467384475891114),
+                (183445,376,0.48162204785721324),
+                (173221,2070,0.2871449627858044),
+                (86438,2522,0.24297935251594097),
+                (140102,10225,0.23056001010372637),
+                (66471,660,0.4331186898675131),
+                (162231,1710,0.2688618715703621),
+                (169959,963,0.2857223926106482),
+                (261975,1018,0.25575245525719836),
+                (125560,1404,0.25123836109635034),
+                (26440,1997,0.3180090866718882),
+                (664,1952,0.3518398107211833),
+                (9736,1016,0.38674998337924466),
+                (159017,4731,0.3098707735059312),
+                (28841,633,0.30137974694826586),
+                (119513,4693,0.26880113157945884),
+                (150473,4990,0.27720385495872235),
+                (139290,2143,0.3029787575198016),
+                (93018,1199,0.30262364942500036),
+                (127482,1456,0.34385249208514085),
+                (70842,1851,0.2747067357947007),
+                (193963,461,0.33633320035542624),
+                (163435,3177,0.316101099746451),
+                (149179,3094,0.28681067989807657),
+                (61340,1477,0.27950695372637246),
+                (3404,1270,0.3166103306596998),
+                (129500,2757,0.253619667713858),
+                (205677,5107,0.159171278587401),
+                (51837,2324,0.28896453096843183),
+                (237789,1029,0.30138946402133815),
+                (217438,996,0.311016772668759),
+                (233231,1419,0.3006881587481516),
+                (253823,1118,0.27636075734521903),
+                (144335,1653,0.2796774525370838)
+            )
 
-            val onFinish = System.nanoTime
+            val x = selectMinimumClosestPivotsRec(instance, 600, pivotsWithCountAndDist)
+            println(x.map(t => t._1).sum)
 
-            val duration = (onFinish - onStart) / 1000000
-
-            val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
-
-            val predictionsAndLabelsAntihub = classifications.join(antihub).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val detectionMetricsAntihub = new BinaryClassificationMetrics(predictionsAndLabelsAntihub)
-
-            println(s"---------------Done executing-------------------")
-            println(s"Result was: roc -> ${detectionMetricsAntihub.areaUnderROC()} taking ${duration}ms")
-        }
-        catch{
-            case e: Exception => {
-                println("-------------The execution didn't finish due to------------------")
-                println(e)
-            }
-        }
-    }
+//            val rawData = sc.textFile(datasetPath).map(line => line.split(","))
+//            val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
+//                val (line, index) = tuple
+//                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+//                val classification = if (line.last == "1") "1.0" else "0.0"
+//                (new Instance(index.toInt, attributes), classification)
+//            }).cache()
+//            val instances = instancesAndClassification.map(_._1)
+//            val repartitioned = instances.repartition(16)
+//            val antihub = SameThingByPartition.detectAnomalies(repartitioned, pivotsAmount, seed, k, euclidean, sc)
+//            antihub.cache()
+//            antihub.count()
+//
+//            val onFinish = System.nanoTime
+//
+//            val duration = (onFinish - onStart) / 1000000
+//
+//            val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2))
+//
+//            val predictionsAndLabelsAntihub = classifications.join(antihub).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+//            val detectionMetricsAntihub = new BinaryClassificationMetrics(predictionsAndLabelsAntihub)
+//
+//            println(s"---------------Done executing-------------------")
+//            println(s"Result was: roc -> ${detectionMetricsAntihub.areaUnderROC()} taking ${duration}ms")
+//        }
+//        catch{
+//            case e: Exception => {
+//                println("-------------The execution didn't finish due to------------------")
+//                println(e)
+//            }
+//        }
+    }}
 }
