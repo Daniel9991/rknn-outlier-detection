@@ -10,6 +10,7 @@ import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import rknn_outlier_detection.big_data.detection.{Antihub, AntihubRefined, DetectionStrategy, RankedReverseCount}
+import rknn_outlier_detection.big_data.full_implementation.Antihub
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
 import rknn_outlier_detection.big_data.search.pivot_based.{GroupedByPivot, PkNN}
 import rknn_outlier_detection.big_data.search.reverse_knn.NeighborsReverser
@@ -20,7 +21,8 @@ import rknn_outlier_detection.small_data.search.pivot_based.{FarthestFirstTraver
 object BigDataExperiment {
 
     def main(args: Array[String]): Unit = {
-        mainExperiment(args)
+//        mainExperiment(args)
+        antihubExperiment()
     }
 
 //    def compareReverseNeighborsCountBetweenApproximateAndExactSearch(): Unit ={
@@ -1186,6 +1188,84 @@ object BigDataExperiment {
             saveStatistics(refinedLine)
 
             println(s"---------------Done executing-------------------")
+        }
+        catch{
+            case e: Exception => {
+                println("-------------The execution didn't finish due to------------------")
+                println(e)
+            }
+        }
+    }
+
+    def antihubExperiment(): Unit = {
+
+        val pivotsAmount = 142
+        val k = 400
+        val seed = 12541
+        val datasetSize = -1
+
+        try{
+            val fullPath = System.getProperty("user.dir")
+
+            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
+            val datasetPath = s"${fullPath}\\${datasetRelativePath}"
+
+            val config = new SparkConf().setAppName("Scaled creditcard test")
+            config.setMaster("local[*]")
+            config.set("spark.executor.memory", "12g")
+            config.set("spark.default.parallelism", "48")
+            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
+
+            val sc = new SparkContext(config)
+
+            val rawData = sc.textFile(datasetPath).map(line => line.split(","))
+            val instancesAndClassification = rawData.zipWithIndex.map(tuple => {
+                val (line, index) = tuple
+                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+                val classification = if (line.last == "1") "1.0" else "0.0"
+                (new Instance(index.toInt, attributes), classification)
+            }).cache()
+            val instances = instancesAndClassification.map(_._1).repartition(48).cache()
+            val classifications = instancesAndClassification.map(tuple => (tuple._1.id, tuple._2)).cache()
+
+            val onStart3 = System.nanoTime
+
+            val antihub3 = Antihub.detect(instances, pivotsAmount, seed, k, euclidean, sc).cache()
+            antihub3.count()
+
+            val onFinish3 = System.nanoTime
+            val duration3 = (onFinish3 - onStart3) / 1000000
+
+            val predictionsAndLabels3 = classifications.join(antihub3).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val roc3 = new BinaryClassificationMetrics(predictionsAndLabels3).areaUnderROC()
+
+            val onStart1 = System.nanoTime
+
+            val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
+            val kNeighbors = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
+            val rNeighbors = NeighborsReverser.findReverseNeighbors(kNeighbors).cache()
+            val antihub1 = new Antihub().antihub(rNeighbors).cache()
+            antihub1.count()
+
+            val onFinish1 = System.nanoTime
+            val duration1 = (onFinish1 - onStart1) / 1000000
+
+            val predictionsAndLabels1 = classifications.join(antihub1).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val roc1 = new BinaryClassificationMetrics(predictionsAndLabels1).areaUnderROC()
+
+            val onStart2 = System.nanoTime
+
+            val antihub2 = Antihub.detectFlag(instances, pivotsAmount, seed, k, euclidean, sc).cache()
+            antihub2.count()
+
+            val onFinish2 = System.nanoTime
+            val duration2 = (onFinish2 - onStart2) / 1000000
+
+            val predictionsAndLabels2 = classifications.join(antihub2).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val roc2 = new BinaryClassificationMetrics(predictionsAndLabels2).areaUnderROC()
+
+            println(s"---------------Done executing-------------------\nRegular antihub took: ${duration1}ms with roc: $roc1\nFull antihub with flag took: ${duration2}ms with roc: $roc2\nFull antihub without flag took: ${duration3}ms with roc: $roc3")
         }
         catch{
             case e: Exception => {

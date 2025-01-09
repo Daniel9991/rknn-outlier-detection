@@ -4,6 +4,8 @@ import rknn_outlier_detection.shared.distance.DistanceFunctions
 package object rknn_outlier_detection {
 
     type Pivot = Instance
+    type PivotWithCountAndDist = (Instance, Int, Double)
+    type PivotWithCount = (Instance, Int)
 
     type DistanceFunction = (Array[Double], Array[Double]) => Double
 

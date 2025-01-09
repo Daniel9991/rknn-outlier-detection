@@ -2,7 +2,7 @@ package rknn_outlier_detection.big_data.search.pivot_based
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import rknn_outlier_detection.DistanceFunction
+import rknn_outlier_detection.{DistanceFunction, PivotWithCount, PivotWithCountAndDist}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 import rknn_outlier_detection.shared.utils.Utils
 import rknn_outlier_detection.shared.utils.Utils.addNewNeighbor
@@ -245,9 +245,6 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
         incompleteCoreKNNs.unpersist()
         completeCoreKNNs.union(incompleteCoreKNNsFixed)
     }
-
-    type PivotWithCountAndDist = (Instance, Int, Double)
-    type PivotWithCount = (Instance, Int)
 
     def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
 

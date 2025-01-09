@@ -45,7 +45,7 @@ class ApproximateSearchBroadcastedPivotsTest extends AnyFunSuite{
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
 
             val onStartIter = System.nanoTime
-            val kNeighborsIter = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc, tailrec = false).cache()
+            val kNeighborsIter = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
             kNeighborsIter.count()
             val onFinishIter = System.nanoTime
             val iterDuration = (onFinishIter - onStartIter) / 1000000
