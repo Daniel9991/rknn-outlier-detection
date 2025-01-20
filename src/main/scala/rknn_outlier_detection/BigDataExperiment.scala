@@ -8,9 +8,9 @@ import rknn_outlier_detection.big_data.search.exhaustive_knn.ExhaustiveBigData
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Dataset, SparkSession}
 import rknn_outlier_detection.big_data.detection.{Antihub, AntihubRefined, DetectionStrategy, RankedReverseCount}
-import rknn_outlier_detection.big_data.full_implementation.Antihub
+import rknn_outlier_detection.big_data.full_implementation.{Antihub, StructuredAntihub}
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
 import rknn_outlier_detection.big_data.search.pivot_based.{GroupedByPivot, PkNN}
 import rknn_outlier_detection.big_data.search.reverse_knn.NeighborsReverser
@@ -21,8 +21,8 @@ import rknn_outlier_detection.small_data.search.pivot_based.{FarthestFirstTraver
 object BigDataExperiment {
 
     def main(args: Array[String]): Unit = {
-//        mainExperiment(args)
-        antihubExperiment()
+        mainExperiment(args)
+//        mainStructured(args)
     }
 
 //    def compareReverseNeighborsCountBetweenApproximateAndExactSearch(): Unit ={
@@ -1266,6 +1266,56 @@ object BigDataExperiment {
             val roc2 = new BinaryClassificationMetrics(predictionsAndLabels2).areaUnderROC()
 
             println(s"---------------Done executing-------------------\nRegular antihub took: ${duration1}ms with roc: $roc1\nFull antihub with flag took: ${duration2}ms with roc: $roc2\nFull antihub without flag took: ${duration3}ms with roc: $roc3")
+        }
+        catch{
+            case e: Exception => {
+                println("-------------The execution didn't finish due to------------------")
+                println(e)
+            }
+        }
+    }
+
+    def mainStructured(args: Array[String]): Unit ={
+
+        val nodes = if(args.length > 0) args(0).toInt else 1
+        val pivotsAmount = if(args.length > 1) args(1).toInt else 142
+        val k = if(args.length > 2) args(2).toInt else 800
+        val seed = if(args.length > 3) args(3).toInt else 12541
+        val datasetSize = if(args.length > 4) args(4).toInt else -1
+        val method = if(args.length > 5) args(5) else "broadcastedTailRec"
+
+        try{
+            val fullPath = System.getProperty("user.dir")
+
+            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
+            val datasetPath = s"${fullPath}\\${datasetRelativePath}"
+
+            val config = new SparkConf()
+            config.setMaster("local[*]")
+            config.set("spark.executor.memory", "12g")
+            config.set("spark.default.parallelism", "48")
+            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
+
+            val spark = SparkSession.builder()
+                .config(config)
+                .appName("Test Structured Antihub")
+                .getOrCreate();
+
+            import spark.implicits._
+
+            val rawData = spark.read.textFile(datasetPath).map(row => row.split(","))
+            val instancesAndClassification = rawData.rdd.zipWithIndex.map{case (line, index) => {
+                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+                val classification = if (line.last == "1") "1.0" else "0.0"
+                (Instance(index.toInt, attributes), classification)
+            }}.cache()
+            val instances = spark.createDataset(instancesAndClassification.map(_._1)).cache()
+            val classifications = spark.createDataset(instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}).cache()
+
+            StructuredAntihub.detectFlag(instances, pivotsAmount, seed, k, euclidean, spark)
+
+            println(s"---------------Done executing-------------------")
         }
         catch{
             case e: Exception => {

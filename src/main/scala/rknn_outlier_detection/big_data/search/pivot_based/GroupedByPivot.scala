@@ -246,7 +246,83 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
         completeCoreKNNs.union(incompleteCoreKNNsFixed)
     }
 
-    def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
+    def inPartitionAggregator(acc: Array[KNeighbor], newNeighbor: KNeighbor): Array[KNeighbor] = {
+        @tailrec
+        def inPartitionAggregatorTailRec(added: Array[KNeighbor], remaining: Array[KNeighbor], newNeighbor: KNeighbor): Array[KNeighbor] = {
+            if(!added.contains(null) || (remaining.length == 0 && newNeighbor == null)){
+                added
+            }
+            else{
+                val nextNullPosition = added.indexOf(null)
+                val copy = added.map(identity)
+                if(remaining.length == 0 || (newNeighbor != null && remaining(0).distance > newNeighbor.distance)){
+                    copy(nextNullPosition) = newNeighbor
+                    inPartitionAggregatorTailRec(copy, remaining, null)
+                }
+                else{
+                    copy(nextNullPosition) = remaining(0)
+                    val newRemaining = remaining.slice(1, remaining.length)
+                    inPartitionAggregatorTailRec(copy, newRemaining, newNeighbor)
+                }
+            }
+        }
+
+        if(acc.last != null && acc.last.distance <= newNeighbor.distance){
+            acc
+        }
+        else{
+            val k = acc.length
+            inPartitionAggregatorTailRec(Array.fill[KNeighbor](k)(null), acc.filter(n => n != null), newNeighbor)
+        }
+    }
+
+    def betweenPartitionsAggregator(acc1: Array[KNeighbor], acc2: Array[KNeighbor]): Array[KNeighbor] = {
+        @tailrec
+        def betweenPartitionsAggregatorTailRec(merged: Array[KNeighbor], remaining1: Array[KNeighbor], remaining2: Array[KNeighbor]): Array[KNeighbor] = {
+            if(!merged.contains(null) || remaining1.length == 0 && remaining2.length == 0){
+                merged
+            }
+            else{
+                val nextNullPosition = merged.indexOf(null)
+                val copy = merged.map(identity)
+                if(remaining2.length == 0 || (remaining1.length > 0 && remaining1(0).distance <= remaining2(0).distance )){
+                    copy(nextNullPosition) = remaining1(0)
+                    val newRemaining1 = remaining1.slice(1, remaining1.length)
+                    betweenPartitionsAggregatorTailRec(copy, newRemaining1, remaining2)
+                }
+                else{
+                    copy(nextNullPosition) = remaining2(0)
+                    val newRemaining2 = remaining2.slice(1, remaining2.length)
+                    betweenPartitionsAggregatorTailRec(copy, remaining1, newRemaining2)
+                }
+            }
+        }
+
+        val k = acc1.length
+        val resulting = Array.fill[KNeighbor](k)(null)
+        betweenPartitionsAggregatorTailRec(resulting, acc1.filter(n => n != null), acc2.filter(n => n != null))
+    }
+
+    val classicInPartitionAgg: (Array[KNeighbor], KNeighbor) => Array[KNeighbor] = (acc: Array[KNeighbor], neighbor: KNeighbor) => {
+        var finalAcc = acc
+        if(acc.last == null || neighbor.distance < acc.last.distance)
+            finalAcc = Utils.insertNeighborInArray(acc, neighbor)
+
+        finalAcc
+    }
+
+    val classicBetweenPartitionsAgg: (Array[KNeighbor], Array[KNeighbor]) => Array[KNeighbor] = (acc1: Array[KNeighbor], acc2: Array[KNeighbor]) => {
+        var finalAcc = acc1
+        for(neighbor <- acc2){
+            if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
+                finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
+            }
+        }
+
+        finalAcc
+    }
+
+    def findApproximateKNeighborsWithBroadcastedPivots(instances: RDD[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext, tailRec: Boolean = false): RDD[(Int, Array[KNeighbor])] = {
 
         val pivots = sc.broadcast(_pivots)
 
@@ -268,28 +344,17 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
             selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
         })
 
-        val coreKNNs = pivotsToInstance.join(cells)
+        val coreKNNsMapped = pivotsToInstance.join(cells)
             .filter{case (_, (ins1, ins2)) => ins1.id != ins2.id}
             .map(tuple => (tuple._2._1, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
-            .aggregateByKey(Array.fill[KNeighbor](k)(null))(
-                (acc, neighbor) => {
-                    var finalAcc = acc
-                    if(acc.last == null || neighbor.distance < acc.last.distance)
-                        finalAcc = Utils.insertNeighborInArray(acc, neighbor)
 
-                    finalAcc
-                },
-                (acc1, acc2) => {
-                    var finalAcc = acc1
-                    for(neighbor <- acc2){
-                        if(neighbor != null && (finalAcc.last == null || neighbor.distance < finalAcc.last.distance)){
-                            finalAcc = Utils.insertNeighborInArray(finalAcc, neighbor)
-                        }
-                    }
-
-                    finalAcc
-                }
-            )
+        val coreKNNs = if(tailRec){
+            println("--------------------- Tail rec agg -------------------")
+            coreKNNsMapped.aggregateByKey(Array.fill[KNeighbor](k)(null))(classicInPartitionAgg, betweenPartitionsAggregator)
+        }  else {
+            println("--------------------- Classic agg -------------------")
+            coreKNNsMapped.aggregateByKey(Array.fill[KNeighbor](k)(null))(classicInPartitionAgg, classicBetweenPartitionsAgg)
+        }
 
         coreKNNs.map{case (instance, kNeighbors) => (instance.id, kNeighbors)}
     }
