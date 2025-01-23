@@ -5,7 +5,9 @@ package object rknn_outlier_detection {
 
     type Pivot = Instance
     type PivotWithCountAndDist = (Instance, Int, Double)
+    type PivotWithBigCountAndDist = (Instance, BigInt, Double)
     type PivotWithCount = (Instance, Int)
+    type PivotWithBigCount = (Instance, BigInt)
 
     type DistanceFunction = (Array[Double], Array[Double]) => Double
 

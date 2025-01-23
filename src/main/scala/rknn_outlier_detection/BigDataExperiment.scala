@@ -23,6 +23,7 @@ object BigDataExperiment {
     def main(args: Array[String]): Unit = {
         mainExperiment(args)
 //        mainStructured(args)
+//        testStructured_vs_Unstructured(args)
     }
 
 //    def compareReverseNeighborsCountBetweenApproximateAndExactSearch(): Unit ={
@@ -1131,7 +1132,7 @@ object BigDataExperiment {
                 val classification = if (line.last == "1") "1.0" else "0.0"
                 (new Instance(index.toInt, attributes), classification)
             }).cache()
-            val instances = instancesAndClassification.map(_._1).cache()
+            val instances = instancesAndClassification.map(_._1).repartition(sc.defaultParallelism).cache()
 
             val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=seed)
             val kNeighbors = new GroupedByPivot(pivots).findApproximateKNeighborsWithBroadcastedPivots(instances, k, euclidean, sc).cache()
@@ -1278,10 +1279,10 @@ object BigDataExperiment {
     def mainStructured(args: Array[String]): Unit ={
 
         val nodes = if(args.length > 0) args(0).toInt else 1
-        val pivotsAmount = if(args.length > 1) args(1).toInt else 142
+        val pivotsAmount = if(args.length > 1) args(1).toInt else 25
         val k = if(args.length > 2) args(2).toInt else 800
         val seed = if(args.length > 3) args(3).toInt else 12541
-        val datasetSize = if(args.length > 4) args(4).toInt else -1
+        val datasetSize = if(args.length > 4) args(4).toInt else 50000
         val method = if(args.length > 5) args(5) else "broadcastedTailRec"
 
         try{
@@ -1310,25 +1311,63 @@ object BigDataExperiment {
                 val classification = if (line.last == "1") "1.0" else "0.0"
                 (Instance(index.toInt, attributes), classification)
             }}.cache()
-            val instances = spark.createDataset(instancesAndClassification.map(_._1)).cache()
-            val classifications = spark.createDataset(instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}).cache()
+            val instances = spark.createDataset(instancesAndClassification.map(_._1).repartition(48)).cache()
+            val classifications = instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}
 
-            StructuredAntihub.detectFlag(instances, pivotsAmount, seed, k, euclidean, spark)
+            val start = System.nanoTime()
+            val antihub = StructuredAntihub.detectFlag(instances, pivotsAmount, seed, k, euclidean, spark).cache()
+            antihub.count()
+            val finish = System.nanoTime()
+            val duration = (finish - start) / 1000000
+
+            val startStruct = System.nanoTime()
+            val antihubStruct = StructuredAntihub.detect(instances, pivotsAmount, seed, k, euclidean, spark).cache()
+            antihubStruct.count
+            val finishStruct = System.nanoTime()
+            val durationStruct = (finishStruct - startStruct) / 1000000
+
+            val instancesRDD = instances.rdd.cache()
+            instancesRDD.count
+
+            val startUns = System.nanoTime()
+            val antihubUns = Antihub.detect(instancesRDD, pivotsAmount, seed, k, euclidean, spark.sparkContext).cache()
+            antihubUns.count
+            val finishUns = System.nanoTime()
+            val durationUns = (finishUns - startUns) / 1000000
+
+            val predictionsAndLabels = classifications.join(antihub.rdd).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val roc = new BinaryClassificationMetrics(predictionsAndLabels).areaUnderROC()
+
+            val predictionsAndLabelsStruct = classifications.join(antihubStruct.rdd).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val rocStruct = new BinaryClassificationMetrics(predictionsAndLabelsStruct).areaUnderROC()
+
+            val predictionsAndLabelsUns = classifications.join(antihubUns).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val rocUns = new BinaryClassificationMetrics(predictionsAndLabelsUns).areaUnderROC()
 
             println(s"---------------Done executing-------------------")
+            println(s"---------------Structured Flag - Roc: ${roc}     Duration: ${duration}ms-------------------")
+            println(s"---------------Structured - Roc: ${rocStruct}     Duration: ${durationStruct}ms-------------------")
+            println(s"---------------Unstructured - Roc: ${rocUns}     Duration: ${durationUns}ms-------------------")
+            System.in.read()
+            spark.stop()
         }
         catch{
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
+                System.in.read()
             }
         }
     }
 
-    def testStructured_vs_Unstructured(): Unit ={
-        val pivotsAmount = 71
-        val k = 50
-        val datasetSize = -1
+    def testStructured_vs_Unstructured(args: Array[String]): Unit ={
+
+        val nodes = if(args.length > 0) args(0).toInt else 1
+        val pivotsAmount = if(args.length > 1) args(1).toInt else 25
+        val k = if(args.length > 2) args(2).toInt else 800
+        val seed = if(args.length > 3) args(3).toInt else 12541
+        val datasetSize = if(args.length > 4) args(4).toInt else 50000
+        val method = if(args.length > 5) args(5) else "broadcastedTailRec"
 
         try{
             val fullPath = System.getProperty("user.dir")
@@ -1336,42 +1375,59 @@ object BigDataExperiment {
             val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
             val datasetPath = s"${fullPath}\\${datasetRelativePath}"
 
+            val config = new SparkConf()
+//            config.setMaster("local[*]")
+            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
+
             val spark = SparkSession.builder()
-                .appName("Test Structured vs Unstructured")
+                .config(config)
+                .appName("Test Structured Antihub")
                 .getOrCreate();
 
             import spark.implicits._
 
-            val rawData = spark.sparkContext.textFile(datasetPath).map(line => line.split(","))
-            val instances = rawData.zipWithIndex.map(tuple => {
-                val (line, index) = tuple
+            val rawData = spark.read.textFile(datasetPath).map(row => row.split(","))
+            val instancesAndClassification = rawData.rdd.zipWithIndex.map{case (line, index) => {
                 val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-//                val classification = if (line.last == "1") "1.0" else "0.0"
-                new Instance(index.toInt, attributes)
-            }).cache()
+                val classification = if (line.last == "1") "1.0" else "0.0"
+                (Instance(index.toInt, attributes), classification)
+            }}.cache()
+            val instances = spark.createDataset(instancesAndClassification.map(_._1)).cache()
+            val classifications = instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}
 
-            val pivots = instances.takeSample(withReplacement = false, pivotsAmount, seed=57124) // seed=87654 seed2=458212 seed3=57124
+            val startStruct = System.nanoTime()
+            val antihubStruct = StructuredAntihub.detect(instances, pivotsAmount, seed, k, euclidean, spark).cache()
+            antihubStruct.count()
+            val finishStruct = System.nanoTime()
+            val durationStruct = (finishStruct - startStruct) / 1000000
+            val predictionsAndLabelsStruct = classifications.join(antihubStruct.rdd).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val rocStruct = new BinaryClassificationMetrics(predictionsAndLabelsStruct).areaUnderROC()
+            antihubStruct.unpersist()
 
-            val onStartUnstructured = System.nanoTime
-            val unstructuredKNeighbors = new GroupedByPivot(pivots).findApproximateKNeighbors(instances, k, euclidean, spark.sparkContext).cache()
-            if(unstructuredKNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
-                throw new Exception("There are elements with null neighbors in unstructured")
-            }
+            val startStructFlag = System.nanoTime()
+            val antihubStructFlag = StructuredAntihub.detectFlag(instances, pivotsAmount, seed, k, euclidean, spark).cache()
+            antihubStructFlag.count()
+            val finishStructFlag = System.nanoTime()
+            val durationStructFlag = (finishStructFlag - startStructFlag) / 1000000
+            val predictionsAndLabelsStructFlag = classifications.join(antihubStructFlag.rdd).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val rocStructFlag = new BinaryClassificationMetrics(predictionsAndLabelsStructFlag).areaUnderROC()
+            antihubStructFlag.unpersist()
 
-            unstructuredKNeighbors.count()
-            val unstructuredDuration = (System.nanoTime - onStartUnstructured) / 1000000
+            val instancesRDD = instances.rdd
+            val startUnstruct = System.nanoTime()
+            val antihubUnstruct = Antihub.detect(instancesRDD, pivotsAmount, seed, k, euclidean, spark.sparkContext).cache()
+            antihubUnstruct.count()
+            val finishUnstruct = System.nanoTime()
+            val durationUnstruct = (finishUnstruct - startUnstruct) / 1000000
+            val predictionsAndLabelsUnstruct = classifications.join(antihubUnstruct).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val rocUnstruct = new BinaryClassificationMetrics(predictionsAndLabelsUnstruct).areaUnderROC()
+            antihubUnstruct.unpersist()
 
-//            val instancesDataset = spark.createDataset(instances)
-            val onStartStructured = System.nanoTime
-//            val structuredKNeighbors = new PkNN(pivots, 1000).findApproximateKNeighborsStructured(instancesDataset, k, euclidean, spark).cache()
-//            if(structuredKNeighbors.filter(tuple => tuple._2.contains(null)).count() > 0){
-//                throw new Exception("There are elements with null neighbors in structured")
-//            }
-//
-//            structuredKNeighbors.count()
-//            val structuredDuration = (System.nanoTime - onStartStructured) / 1000000
-
-//            println(s"---------------Done executing -------------------\nUnstructured search: $unstructuredDuration ms\nStructured search: $structuredDuration ms")
+            val filename = s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\struct_vs_unstruct.csv"
+            val previousRecordsText = ReaderWriter.readCSV(filename, hasHeader=false).map(line => line.mkString(",")).mkString("\n")
+            val updatedRecords = s"$previousRecordsText\n$nodes,$pivotsAmount,$k,$seed,$rocUnstruct,$durationUnstruct,$rocStruct,$durationStruct,$rocStructFlag,$durationStructFlag"
+            ReaderWriter.writeToFile(filename, updatedRecords)
         }
         catch{
             case e: Exception => {
