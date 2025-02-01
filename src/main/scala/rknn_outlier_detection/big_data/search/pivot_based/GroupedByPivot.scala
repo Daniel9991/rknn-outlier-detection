@@ -346,17 +346,11 @@ class GroupedByPivot(_pivots: Array[Instance]) extends Serializable{
 
         val coreKNNsMapped = pivotsToInstance.join(cells)
             .filter{case (_, (ins1, ins2)) => ins1.id != ins2.id}
-            .map(tuple => (tuple._2._1, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
+            .map(tuple => (tuple._2._1.id, new KNeighbor(tuple._2._2.id, distanceFunction(tuple._2._1.data, tuple._2._2.data))))
 
-        val coreKNNs = if(tailRec){
-            println("--------------------- Tail rec agg -------------------")
-            coreKNNsMapped.aggregateByKey(Array.fill[KNeighbor](k)(null))(classicInPartitionAgg, betweenPartitionsAggregator)
-        }  else {
-            println("--------------------- Classic agg -------------------")
-            coreKNNsMapped.aggregateByKey(Array.fill[KNeighbor](k)(null))(classicInPartitionAgg, classicBetweenPartitionsAgg)
-        }
+        val coreKNNs = coreKNNsMapped.aggregateByKey(Array.fill[KNeighbor](k)(null))(classicInPartitionAgg, classicBetweenPartitionsAgg)
 
-        coreKNNs.map{case (instance, kNeighbors) => (instance.id, kNeighbors)}
+        coreKNNs
     }
 
     def selectMinimumClosestPivotsIter(instance: Instance, k: Int, pivots: Array[PivotWithCountAndDist]): Array[(Instance, Instance)] = {

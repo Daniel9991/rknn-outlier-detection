@@ -2,30 +2,37 @@ package rknn_outlier_detection.small_data.detection
 
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
+import scala.collection.immutable.HashMap
+
 class AntihubRefined(
     val step: Double,
     val ratio: Double
 ) extends DetectionCriteria {
 
-    override def scoreInstances(kNeighbors: Array[Array[KNeighbor]], reverseNeighbors: Array[Array[RNeighbor]]): Array[Double] = {
-        val antihubScores = new Antihub().scoreInstances(kNeighbors, reverseNeighbors)
+    override def scoreInstances(reverseNeighbors: Array[(Int, Array[RNeighbor])]): Array[(Int, Double)] = {
+        val antihubScores = new Antihub().scoreInstances(reverseNeighbors)
+        val antihubScoresMap = HashMap.from(antihubScores)
 
-        val neighborsScoreSum = kNeighbors.map(
-            kNeighborsBatch => kNeighborsBatch
-                .map(neighbor => antihubScores(neighbor.id.toInt)).sum
-        )
+        val instanceAndKNeighborsScore = reverseNeighbors
+            .flatMap{case (id, reverseNeighbors) =>
+                reverseNeighbors.map(rNeighbor => (rNeighbor.id, antihubScoresMap(id)))
+            }
+            .groupMap{case (instanceId, _) => instanceId}{case (_, rNeighbor) => rNeighbor}.toArray
+            .map{case (instanceId, neighborsAntihubs) => (instanceId, neighborsAntihubs.sum)}
 
-        var finalScores = antihubScores.clone()
+        val scoresJoin = instanceAndKNeighborsScore.map{case (instanceId, kNeighborsScoreSum) => (instanceId, kNeighborsScoreSum, antihubScoresMap(instanceId))}
+
+        var finalScores = instanceAndKNeighborsScore.clone()
         var disc: Double = 0
         var i = 0
         var alpha = step * i
 
-        while(i <= antihubScores.length && alpha <= 1){
+        while(alpha <= 1){
 
-            val newScores = antihubScores.zip(neighborsScoreSum)
-                .map(tuple => findRefinedScore(tuple._1, tuple._2, alpha))
+            val newScores = scoresJoin
+                .map{case (instanceId, kNeighborsScoreSum, antihub) => (instanceId, findRefinedScore(antihub, kNeighborsScoreSum, alpha))}
 
-            val currentDisc = discScore(newScores, ratio)
+            val currentDisc = discScore(newScores.map(_._2), ratio)
             if(currentDisc > disc){
                 finalScores = newScores.clone()
                 disc = currentDisc
@@ -39,14 +46,12 @@ class AntihubRefined(
     }
 
     def discScore(scores: Array[Double], ratio: Double): Double = {
-        val scoresCopy = scores.clone()
-
-        scoresCopy.sortWith((score1, score2) => score1 < score2)
+        val sortedScores = scores.sortWith((score1, score2) => score1 < score2)
 
         val np = (scores.length * ratio).toInt
 
-        val smallestMembers = scoresCopy.take(np)
-        val uniqueItems = Set(smallestMembers)
+        val smallestMembers = sortedScores.take(np)
+        val uniqueItems = Set.from(smallestMembers)
 
         uniqueItems.size.toDouble / np.toDouble
     }

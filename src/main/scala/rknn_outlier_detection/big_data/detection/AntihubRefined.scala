@@ -9,7 +9,7 @@ class AntihubRefined(ratio: Double, step: Double) extends DetectionStrategy with
 
         val np = (scores.count() * ratio).toInt
 
-        val smallestMembers = scores.aggregate(Array.fill[Double](np)(1.0))(
+        val smallestMembers = scores.aggregate(Array.fill[Double](np)(Double.PositiveInfinity))(
             (smallestScores, nextScore) => {
                 var returnScores = smallestScores
                 if(nextScore < smallestScores.last){
@@ -37,7 +37,7 @@ class AntihubRefined(ratio: Double, step: Double) extends DetectionStrategy with
 
     private def findAggregateNeighborsAntihub(rNeighbors: RDD[(Int, Array[RNeighbor])], antihubScores: RDD[(Int, Double)]): RDD[(Int, Double)] ={
 
-        val rNeighborsAndScore = rNeighbors.join(antihubScores)
+        val rNeighborsAndScore = rNeighbors.join(antihubScores) // Sustituible por zip
         val instanceAndKNeighborScore = rNeighborsAndScore.flatMap{case (id, (reverseNeighbors, antihubScore)) =>
             reverseNeighbors.map(rNeighbor => (rNeighbor.id, antihubScore))
         }
@@ -53,7 +53,7 @@ class AntihubRefined(ratio: Double, step: Double) extends DetectionStrategy with
         var i = 0
         var alpha = step * i
 
-        val joinedScoreAndAggregatesScores = antihubScores.join(finalScores).cache()
+        val joinedScoreAndAggregatesScores = antihubScores.join(finalScores).cache() // Sustituible por zip
 
         while(alpha <= 1){
 
@@ -84,13 +84,15 @@ class AntihubRefined(ratio: Double, step: Double) extends DetectionStrategy with
         val antihubScores = new Antihub().antihub(rNeighbors)
 
         // Find antihubScores for instances and add them to corresponding instances
-        var finalScores: RDD[(Int, Double)] = findAggregateNeighborsAntihub(rNeighbors, antihubScores)
+//        var finalScores: RDD[(Int, Double)] = findAggregateNeighborsAntihub(rNeighbors, antihubScores)
+        var aggregateScores: RDD[(Int, Double)] = findAggregateNeighborsAntihub(rNeighbors, antihubScores)
+        var finalScores: RDD[(Int, Double)] = antihubScores.map(identity)
 
         var disc = 0.0
         var i = 0
         var alpha = step * i
 
-        val joinedScoreAndAggregatesScores = antihubScores.join(finalScores).cache()
+        val joinedScoreAndAggregatesScores = antihubScores.join(aggregateScores).cache()
 
         while(alpha <= 1){
 
@@ -101,9 +103,16 @@ class AntihubRefined(ratio: Double, step: Double) extends DetectionStrategy with
             }
 
             // Calculate discrimination degree
+            if(finalScores.collect.exists(el => el._2 > 1.78)){
+                val justBecause = finalScores.collect()
+                println("found")
+            }
             val currentDisc = discScore(newScores.values, ratio)
             if(currentDisc > disc){
-                finalScores = newScores
+                if(i != 0){
+                    println("")
+                }
+                finalScores = newScores.map(identity)
                 disc = currentDisc
             }
 
@@ -112,6 +121,8 @@ class AntihubRefined(ratio: Double, step: Double) extends DetectionStrategy with
         }
 
         joinedScoreAndAggregatesScores.unpersist()
+        val x = finalScores.collect()
+        val y = 1
         finalScores
     }
 
