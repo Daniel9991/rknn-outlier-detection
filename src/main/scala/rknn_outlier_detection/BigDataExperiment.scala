@@ -1417,13 +1417,13 @@ object BigDataExperiment {
             val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
             val datasetPath = s"${fullPath}\\${datasetRelativePath}"
 
-            val config = new SparkConf().setAppName("Scaled creditcard test")
+            val config = new SparkConf()
             config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
 
             val spark = SparkSession.builder()
                 .config(config)
-                .appName("Scaled creditcard test")
+                .appName(s"Test k: $k seed: $seed method: $detectionMethod")
                 .getOrCreate();
 
             val sc = spark.sparkContext
@@ -1463,109 +1463,6 @@ object BigDataExperiment {
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
-                System.in.read()
-            }
-        }
-    }
-
-    def byPartitionHalfvsFullExperiment(args: Array[String]) = {
-        val nodes = if(args.length > 0) args(0).toInt else 1
-        val pivotsAmount = if(args.length > 1) args(1).toInt else 142
-        val k = if(args.length > 2) args(2).toInt else 100
-        val seed = if(args.length > 3) args(3).toInt else 12541
-        val datasetSize = if(args.length > 4) args(4).toInt else -1
-        val distanceFunction = euclidean
-
-        try{
-            val fullPath = System.getProperty("user.dir")
-
-            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled${if(datasetSize == -1) "" else s"_${datasetSize}"}.csv"
-            val datasetPath = s"${fullPath}\\${datasetRelativePath}"
-
-            val config = new SparkConf().setAppName("Scaled creditcard test")
-            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-            config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
-
-            val spark = SparkSession.builder()
-                .config(config)
-                .appName("Scaled creditcard test")
-                .getOrCreate();
-
-            val sc = spark.sparkContext
-
-            import spark.implicits._
-
-            val rawData = spark.read.textFile(datasetPath).map(row => row.split(","))
-            val instancesAndClassification = rawData.rdd.zipWithIndex.map{case (line, index) => {
-                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-                val classification = if (line.last == "1") "1.0" else "0.0"
-                (Instance(index.toInt, attributes), classification)
-            }}.cache()
-
-            val instances = instancesAndClassification.map(_._1)
-            val classifications = instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}
-
-            val onStartHalf = System.nanoTime()
-            val sample = instances.takeSample(withReplacement = false, pivotsAmount, seed)
-            val pivots = sc.broadcast(sample)
-            // Create cells
-            val cells = instances.map(instance => {
-                val closestPivot = pivots.value
-                    .map(pivot => (pivot, distanceFunction(pivot.data, instance.data)))
-                    .reduce {(pair1, pair2) => if(pair1._2 <= pair2._2) pair1 else pair2 }
-
-                (closestPivot._1, instance)
-            }).partitionBy(new PivotsPartitioner(pivotsAmount, pivots.value.map(_.id))).persist()
-//            val pivotsWithCounts = sc.broadcast(cells.mapValues{_ => 1}.reduceByKey{_+_}.collect)
-//            val pivotsToInstance = instances.flatMap(instance => {
-//                val pivotsWithCountAndDist = pivotsWithCounts.value
-//                    .map(pivot => (pivot._1, pivot._2, distanceFunction(pivot._1.data, instance.data)))
-//
-//                selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
-//            }).partitionBy(new PivotsPartitioner(pivotsAmount, pivots.value.map(_.id))).persist()
-            val rNeighbors = cells.mapPartitions(iter => {
-                // All elements from the same partition should belong to the same pivot
-                val elements = iter.toArray.map{case (pivot, instance) => instance}
-                val allKNeighbors = elements.map(el => (el.id, new ExhaustiveSmallData().findQueryKNeighbors(el, elements,k, distanceFunction)))
-                val filteredKNeighbors = allKNeighbors.map{case (id, neighbors) => (id, neighbors.filter(n => n != null))}
-                val rNeighbors = filteredKNeighbors.flatMap{case (instanceId, kNeighbors) =>
-                    kNeighbors.zipWithIndex.map{case (neighbor, index) => (neighbor.id, new RNeighbor(instanceId, index))}
-                }.groupMap{case (instanceId, _) => instanceId}{case (_, rNeighbor) => rNeighbor}.toArray
-
-                Iterator.from(rNeighbors)
-            })
-            val antihubHalf = new Antihub().antihub(rNeighbors).persist()
-            antihubHalf.count()
-            val onFinishHalf = System.nanoTime
-
-            val halfDuration = (onFinishHalf - onStartHalf) / 1000000
-
-            val predictionsAndLabelsHalf = classifications.join(antihubHalf).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val rocHalf = new BinaryClassificationMetrics(predictionsAndLabelsHalf).areaUnderROC()
-
-            val onStartFull = System.nanoTime()
-            val antihubFull = new SameThingByPartition().detectAnomalies(instances,pivotsAmount, seed, k, euclidean, spark.sparkContext, new detection.Antihub()).persist()
-            antihubFull.count
-            val onFinishFull = System.nanoTime
-
-            val fullDuration = (onFinishFull - onStartFull) / 1000000
-
-            val predictionsAndLabelsFull = classifications.join(antihubFull).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
-            val rocFull = new BinaryClassificationMetrics(predictionsAndLabelsFull).areaUnderROC()
-
-            val halfLine = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$seed,half,${rocHalf},${halfDuration}"
-            saveStatistics(halfLine, s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\antihub_by_paritions_half_full.csv")
-
-            val fullLine = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$seed,full,${rocFull},${fullDuration}"
-            saveStatistics(fullLine, s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\antihub_by_paritions_half_full.csv")
-
-            println(s"---------------Done executing-------------------")
-        }
-        catch{
-            case e: Exception => {
-                println("-------------The execution didn't finish due to------------------")
-                println(e)
-                System.in.read()
             }
         }
     }

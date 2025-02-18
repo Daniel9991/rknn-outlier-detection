@@ -2,9 +2,11 @@ package rknn_outlier_detection.big_data.full_implementation
 
 import org.apache.spark.{HashPartitioner, SparkContext}
 import org.apache.spark.rdd.RDD
+import rknn_outlier_detection.big_data.partitioners.PivotsPartitioner
 import rknn_outlier_detection.{DistanceFunction, Pivot, PivotWithCount, PivotWithCountAndDist}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 import rknn_outlier_detection.shared.utils.Utils
+import rknn_outlier_detection.small_data.search.ExhaustiveSmallData
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -282,7 +284,7 @@ object Antihub {
         val sampledPivots = instances.takeSample(withReplacement = false, pivotsAmount, seed = seed)
         val pivots = sc.broadcast(sampledPivots)
 
-        val customPartitioner = new HashPartitioner(seed)
+        val customPartitioner = new PivotsPartitioner(pivotsAmount, sampledPivots.map(_.id))
 
         // Create cells
         val cells = instances.map(instance => {
@@ -300,24 +302,20 @@ object Antihub {
                 .map(pivot => (pivot._1, pivot._2, distanceFunction(pivot._1.data, instance.data)))
 
             selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
+        }).partitionBy(customPartitioner)
+
+        val byPartitionKNeighbors = pivotsToInstance.mapPartitions(iter => {
+            // All elements from the same partition should belong to the same pivot
+            val elements = iter.toArray.map{case (pivot, instance) => instance}
+
+            // There can be elements with null kNeighbors
+            val allKNeighbors = elements.map(el => (el.id, new ExhaustiveSmallData().findQueryKNeighbors(el, elements,k, distanceFunction)))
+
+            Iterator.from(allKNeighbors)
         })
 
-        val pairs = pivotsToInstance.join(cells)
-            .filter{case (_, (ins1, ins2)) => ins1.id != ins2.id}
-            .map{case (_, (instance1, instance2)) => (instance1.id, KNeighbor(instance2.id, distanceFunction(instance1.data, instance2.data)))}
-            .partitionBy(customPartitioner).cache()
-
-        cells.unpersist()
-
-        val kNeighbors = pairs
-            .aggregateByKey(Array.fill[KNeighbor](k)(null))(
-                (acc, neighbor) => {
-                    var finalAcc = acc
-                    if(acc.last == null || neighbor.distance < acc.last.distance)
-                        finalAcc = Utils.insertNeighborInArray(acc, neighbor)
-
-                    finalAcc
-                },
+        val finalKNeighbors = byPartitionKNeighbors
+            .reduceByKey(
                 (acc1, acc2) => {
                     var finalAcc = acc1
                     for(neighbor <- acc2){
@@ -329,24 +327,24 @@ object Antihub {
                     finalAcc
                 }
             )
-            .cache()
+            .persist()
 
         // Missing 0 for instances with no reverse neighbors
-        val reverseCountByInstanceId = kNeighbors.flatMap{case (_, neighbors) =>
+        val reverseCountByInstanceId = finalKNeighbors.flatMap{case (_, neighbors) =>
             neighbors.map(neighbor => (neighbor.id, 1))
         }.reduceByKey(_+_)
 
         // Dealing with instances that don't have reverse neighbors and don't come
         // up in y
-        val rNeighborsCount = kNeighbors.mapValues(_ => 0.toByte)
-            .leftOuterJoin(reverseCountByInstanceId, customPartitioner)
+        val rNeighborsCount = finalKNeighbors.mapValues(_ => 0.toByte)
+            .leftOuterJoin(reverseCountByInstanceId)
             .mapValues{case (_, rNeighborsAmount)  => rNeighborsAmount.getOrElse(0)}
 
         val antihub = rNeighborsCount.mapValues(count =>
             if(count == 0) 1.0 else 1.0 / count.toDouble
         )
 
-        kNeighbors.unpersist()
+        finalKNeighbors.unpersist()
         antihub
     }
 }
