@@ -5,7 +5,7 @@ import org.apache.spark.rdd.RDD
 import rknn_outlier_detection.big_data.partitioners.PivotsPartitioner
 import rknn_outlier_detection.{DistanceFunction, Pivot, PivotWithCount, PivotWithCountAndDist}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
-import rknn_outlier_detection.shared.utils.Utils
+import rknn_outlier_detection.shared.utils.{ReaderWriter, Utils}
 import rknn_outlier_detection.small_data.search.ExhaustiveSmallData
 
 import scala.annotation.tailrec
@@ -284,6 +284,13 @@ object Antihub {
         val sampledPivots = instances.takeSample(withReplacement = false, pivotsAmount, seed = seed)
         val pivots = sc.broadcast(sampledPivots)
 
+        val filename = "C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\pivots.csv"
+        val previousRecordsText = ReaderWriter.readCSV(filename, hasHeader=false).map(line => line.mkString(",")).mkString("\n")
+        val updatedRecords = s"$previousRecordsText\n${sampledPivots.map(p => p.id).mkString(",")}"
+        ReaderWriter.writeToFile(filename, updatedRecords)
+
+        throw new Exception("Let's wrap this up")
+
         val customPartitioner = new PivotsPartitioner(pivotsAmount, sampledPivots.map(_.id))
 
         // Create cells
@@ -293,9 +300,11 @@ object Antihub {
                 .reduce {(pair1, pair2) => if(pair1._2 <= pair2._2) pair1 else pair2 }
 
             (closestPivot._1, instance)
-        }).cache()
+        })
 
-        val pivotsWithCounts = sc.broadcast(cells.mapValues{_ => 1}.reduceByKey{_+_}.collect)
+//        val pivotsWithCountsRDD = cells.mapValues{_ => 1}.reduceByKey{_+_}.persist
+        val pivotsWithCountsRDD = cells.mapValues{_ => 1}.reduceByKey{_+_}
+        val pivotsWithCounts = sc.broadcast(pivotsWithCountsRDD.collect)
 
         val pivotsToInstance = instances.flatMap(instance => {
             val pivotsWithCountAndDist = pivotsWithCounts.value
@@ -304,17 +313,38 @@ object Antihub {
             selectMinimumClosestPivotsRec(instance, k, pivotsWithCountAndDist)
         }).partitionBy(customPartitioner)
 
+//        val interestedParties = pivotsToInstance.filter(pair => pair._2.id == 91896 || pair._2.id == 233904).map(pair => (pair._2.id, pair._1.id, pivotsWithCounts.value.find(pivotWithCount => pivotWithCount._1.id == pair._1.id))).collect()
+//        throw new Exception(s"\n${interestedParties.mkString("\n")}\n${pivots.value.find(pivot => pivot.id == 91896)}\n${pivots.value.find(pivot => pivot.id == 233904)}")
+
+//        val byPartitionKNeighbors = pivotsToInstance.mapPartitions(iter => {
+//            val array = iter.toArray
+//            val pivot = array(0)._1
+//            val elements = array.map{case (pivot, instance) => instance}
+//            val exhaustiveSmallData = new ExhaustiveSmallData()
+//
+//            val allKNeighbors = elements.map(el => (pivot.id, (el.id, exhaustiveSmallData.findQueryKNeighbors(el, elements,k, distanceFunction))))
+//            Iterator.from(allKNeighbors)
+//        }).persist
+
         val byPartitionKNeighbors = pivotsToInstance.mapPartitions(iter => {
-            // All elements from the same partition should belong to the same pivot
             val elements = iter.toArray.map{case (pivot, instance) => instance}
+            val exhaustiveSmallData = new ExhaustiveSmallData()
 
-            // There can be elements with null kNeighbors
-            val allKNeighbors = elements.map(el => (el.id, new ExhaustiveSmallData().findQueryKNeighbors(el, elements,k, distanceFunction)))
-
+            val allKNeighbors = elements.map(el => (el.id, exhaustiveSmallData.findQueryKNeighbors(el, elements,k, distanceFunction)))
             Iterator.from(allKNeighbors)
         })
 
+//        val pivotIdWithCount = pivotsWithCountsRDD.map(pair => (pair._1.id, pair._2))
+//        val x = byPartitionKNeighbors.join(pivotIdWithCount)
+//        val elementsThatDidntGetAtLeastTheirNeighbors = x
+//            .filter{ case (pivotId, ((elementId, kNeighbors), count)) => kNeighbors.count(kn => kn == null) == k || kNeighbors.count(kn => kn == null) == count}
+//
+//        if(elementsThatDidntGetAtLeastTheirNeighbors.count() > 0){
+//            throw new Exception(s"There are ${elementsThatDidntGetAtLeastTheirNeighbors.count()} elements that didn't satisfy the condition")
+//        }
+
         val finalKNeighbors = byPartitionKNeighbors
+//            .map(_._2)
             .reduceByKey(
                 (acc1, acc2) => {
                     var finalAcc = acc1
@@ -328,6 +358,14 @@ object Antihub {
                 }
             )
             .persist()
+
+//        val elementsWithNullNeighbors = finalKNeighbors.filter{ case (id, kNeighbors) => kNeighbors.contains(null) }.persist()
+//        if(elementsWithNullNeighbors.count() > 0){
+//            throw new Exception(s"There were elements with null neighbors:\n${elementsWithNullNeighbors.collect().map(tuple => s"${tuple._1}: ${tuple._2.count(k => k == null)} nulls").mkString("\n")}")
+//        }
+//        else{
+//            throw new Exception("There were no elements with null neighbors")
+//        }
 
         // Missing 0 for instances with no reverse neighbors
         val reverseCountByInstanceId = finalKNeighbors.flatMap{case (_, neighbors) =>

@@ -10,7 +10,7 @@ import rknn_outlier_detection.big_data.alternative_methods.SameThingByPartition
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 import rknn_outlier_detection.shared.utils.ReaderWriter
 import rknn_outlier_detection.small_data.detection
-import rknn_outlier_detection.small_data.detection.DetectionCriteria
+import rknn_outlier_detection.small_data.detection.DetectionStrategy
 //import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted}
 import rknn_outlier_detection.knnw_bigdata.{Clasificacion, KNNW_BigData, Tupla, TuplaFase1, TuplaFase2}
 
@@ -37,7 +37,7 @@ object RunOldAlgorithm {
     def knnw_big_data_experiments(args: Array[String]): Unit = {
         val k = if(args.length > 0) args(0).toInt else 10
         val p = if(args.length > 1) args(1).toDouble else 0.1
-        val partitions = if(args.length > 2) args(2).toInt else 8
+        val partitions = if(args.length > 2) args(2).toInt else 320
 
         try{
             val fullPath = System.getProperty("user.dir")
@@ -48,7 +48,7 @@ object RunOldAlgorithm {
             val config = new SparkConf()
             config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             config.registerKryoClasses(Array(classOf[Tupla], classOf[Clasificacion], classOf[TuplaFase1], classOf[TuplaFase2]))
-//            config.setMaster("local[*]")
+            config.setMaster("local[*]")
 
             val spark = SparkSession.builder()
                 .config(config)

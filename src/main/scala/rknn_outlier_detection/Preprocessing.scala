@@ -32,7 +32,7 @@ object Preprocessing {
             .setInputCol("features")
             .setOutputCol("scaledFeatures")
 
-        // Compute summary statistics and generate MaxAbsScalerModel
+        // Compute summary statistics and generate MinMaxScalerModel
         val model = scaler.fit(df)
 
         // rescale each feature to range [0, 1]

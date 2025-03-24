@@ -7,7 +7,7 @@ import scala.collection.immutable.HashMap
 class AntihubRefined(
     val step: Double,
     val ratio: Double
-) extends DetectionCriteria {
+) extends DetectionStrategy {
 
     override def scoreInstances(reverseNeighbors: Array[(Int, Array[RNeighbor])]): Array[(Int, Double)] = {
         val antihubScores = new Antihub().scoreInstances(reverseNeighbors)
@@ -46,7 +46,7 @@ class AntihubRefined(
     }
 
     def discScore(scores: Array[Double], ratio: Double): Double = {
-        val sortedScores = scores.sortWith((score1, score2) => score1 < score2)
+        val sortedScores = scores.sortWith((score1, score2) => score1 > score2)
 
         val np = (scores.length * ratio).toInt
 

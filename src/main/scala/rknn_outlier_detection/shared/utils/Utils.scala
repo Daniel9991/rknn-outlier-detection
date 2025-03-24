@@ -2,8 +2,10 @@ package rknn_outlier_detection.shared.utils
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import rknn_outlier_detection.{PivotWithCount, PivotWithCountAndDist}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor}
 
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
@@ -65,9 +67,9 @@ object Utils {
      * @return Unit - The array is modified in place
      */
     def addNewNeighbor(
-                          kNeighbors: Array[KNeighbor],
-                          newNeighbor: KNeighbor
-                      ): Unit = {
+        kNeighbors: Array[KNeighbor],
+        newNeighbor: KNeighbor
+    ): Unit = {
 
         var currentIndex: Int = 0
 
@@ -93,9 +95,9 @@ object Utils {
     }
 
     def addCandidateSupportPivot(
-                          candidatePivots: ArrayBuffer[(Instance, Double, Int, Int)],
-                          newPivot: (Instance, Double, Int, Int)
-                      ): ArrayBuffer[(Instance, Double, Int, Int)] = {
+        candidatePivots: ArrayBuffer[(Instance, Double, Int, Int)],
+        newPivot: (Instance, Double, Int, Int)
+    ): ArrayBuffer[(Instance, Double, Int, Int)] = {
 
 
         candidatePivots.addOne(newPivot)
@@ -165,5 +167,24 @@ object Utils {
         }
 
         mergedNeighbors
+    }
+
+    def selectMinimumClosestPivotsRec(instance: Instance, k: Int, pivots: Array[PivotWithCountAndDist]): Array[(Instance, Instance)] = {
+        @tailrec
+        def minimumClosestPivotsTailRec(instance: Instance, k: Int, remainingPivots: Array[PivotWithCountAndDist], selectedPivots: ArrayBuffer[PivotWithCount]): Array[(Instance, Instance)] = {
+            if(remainingPivots.isEmpty || (selectedPivots.nonEmpty && selectedPivots.map{case (_, count) => count}.sum > k)){
+                selectedPivots.toArray.map{case (pivot, _) => (pivot, instance)}
+            }
+            else{
+                val closestPivot = remainingPivots.minBy{case (_, _, distanceToPivot) => distanceToPivot}
+                val formatted: PivotWithCount = (closestPivot._1, closestPivot._2)
+                selectedPivots += formatted
+
+                val updatedRemaining = remainingPivots.filter(p => p._1.id != closestPivot._1.id)
+                minimumClosestPivotsTailRec(instance, k, updatedRemaining, selectedPivots)
+            }
+        }
+
+        minimumClosestPivotsTailRec(instance, k, pivots, ArrayBuffer.empty[PivotWithCount])
     }
 }

@@ -1,6 +1,8 @@
 package rknn_outlier_detection
 
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.feature.MinMaxScaler
+import org.apache.spark.ml.linalg.Vectors
 import org.apache.spark.{SparkConf, SparkContext}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 import rknn_outlier_detection.shared.utils.{ReaderWriter, Utils}
@@ -8,17 +10,19 @@ import rknn_outlier_detection.big_data.search.exhaustive_knn.ExhaustiveBigData
 import rknn_outlier_detection.shared.distance.DistanceFunctions
 import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
 import org.apache.spark.rdd.RDD
+import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerTaskEnd}
 import org.apache.spark.sql.{Dataset, SparkSession}
+import rknn_outlier_detection.SmallDataExperiment.saveStatistics
 import rknn_outlier_detection.big_data.alternative_methods.SameThingByPartition
 import rknn_outlier_detection.big_data.detection.{Antihub, AntihubRefined, DetectionStrategy, RankedReverseCount}
 import rknn_outlier_detection.big_data.full_implementation.{Antihub, StructuredAntihub}
 import rknn_outlier_detection.big_data.partitioners.PivotsPartitioner
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
-import rknn_outlier_detection.big_data.search.pivot_based.{GroupedByPivot, PkNN}
+import rknn_outlier_detection.big_data.search.pivot_based.{FarthestFirstTraversal, GroupedByPivot, IncrementalSelection, PkNN}
 import rknn_outlier_detection.big_data.search.reverse_knn.NeighborsReverser
 import rknn_outlier_detection.shared.utils.Utils.addNewNeighbor
-import rknn_outlier_detection.small_data.detection
-import rknn_outlier_detection.small_data.detection.DetectionCriteria
+import rknn_outlier_detection.small_data.{SmallDataDetector, detection}
+import rknn_outlier_detection.small_data.detection.DetectionStrategy
 import rknn_outlier_detection.small_data.search.{ExhaustiveSmallData, ReverseNeighborsSmallData}
 
 import scala.annotation.tailrec
@@ -33,6 +37,7 @@ object BigDataExperiment {
 //        mainExperiment(args)
 //        byPartitionExperiment(args)
         byPartitionFullLengthExperiment(args)
+//        smallDataExperiment(args)
 
 //        val fullPath = System.getProperty("user.dir")
 //
@@ -288,6 +293,84 @@ object BigDataExperiment {
 //            }
 //        }
 //    }
+
+    def smallDataExperiment(args: Array[String]): Unit = {
+
+        // seeds = 87654 458212 57124 6745 12541 7634 431 90783 34634 56342
+        val pivotsAmount = 142
+        val distanceFunction = euclidean
+        val k = if (args.length > 0) args(10).toInt else 200
+        val seed = if (args.length > 1) args(1).toInt else 87654
+        val detectionMethod = if (args.length > 2) args(2) else "antihub"
+
+        try {
+            val fullPath = System.getProperty("user.dir")
+
+            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled.csv"
+            val datasetPath = s"${fullPath}\\${datasetRelativePath}"
+
+            val detectionCriteria: detection.DetectionStrategy = detectionMethod match {
+                case "antihub" => new detection.Antihub()
+                case "ranked" => new detection.RankedReverseCount(k, 0.7)
+                case "refined" => new detection.AntihubRefined(0.1, 0.3)
+            }
+
+            //            val rawData = ReaderWriter.readCSV(datasetPath, hasHeader = false)
+            //            val instancesAndClassification = rawData.zipWithIndex.map { case (line, index) =>
+            //                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+            //                val classification = if (line.last == "1") "1.0" else "0.0"
+            //                (Instance(index, attributes), classification)
+            //            }.toSeq
+            //
+            //            val instances = instancesAndClassification.map(_._1)
+            //            val classifications = instancesAndClassification.map { case (instance, classification) => (instance.id, classification) }
+
+            val config = new SparkConf()
+            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+            config.setMaster("local[*]")
+
+            val spark = SparkSession.builder()
+                .config(config)
+                .appName(s"Small Data Test k: $k seed: $seed method: $detectionMethod")
+                .getOrCreate();
+
+            import spark.implicits._
+
+            val rawData = spark.read.textFile(datasetPath).map(row => row.split(","))
+            val instancesAndClassification = rawData.rdd.zipWithIndex.map{case (line, index) => {
+                val attributes = line.slice(0, line.length - 1).map(_.toDouble)
+                val classification = if (line.last == "1") "1.0" else "0.0"
+                (Instance(index.toInt, attributes), classification)
+            }}.collect().toSeq
+
+            spark.stop()
+
+            val instances = instancesAndClassification.map(_._1)
+            val classifications = instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}
+
+            val onStart = System.nanoTime()
+            val outlierDegrees = new SmallDataDetector().detect(instances, k, pivotsAmount, seed, detectionCriteria, distanceFunction)
+            val onFinish = System.nanoTime
+            val duration = (onFinish - onStart) / 1000000
+
+            config.setAppName("Any name")
+            val sc = new SparkContext(config)
+
+            val predictionsAndLabels = sc.parallelize(classifications).join(sc.parallelize(outlierDegrees)).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
+            val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
+
+            val line = s"$k,$seed,$detectionMethod,${detectionMetrics.areaUnderROC()},$duration"
+            saveStatistics(line)
+
+            println(s"---------------Done executing-------------------")
+        }
+        catch {
+            case e: Exception => {
+                println("-------------The execution didn't finish due to------------------")
+                println(e)
+            }
+        }
+    }
 
     def studyOutliersFromBothSearches(): Unit = {
         val approximateFilename = s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\pknn-max-refined-results.csv"
@@ -1156,10 +1239,10 @@ object BigDataExperiment {
 
         val nodes = if(args.length > 0) args(0).toInt else 1
         val pivotsAmount = if(args.length > 1) args(1).toInt else 142
-        val k = if(args.length > 2) args(2).toInt else 100
+        val k = if(args.length > 2) args(2).toInt else 1
         val seed = if(args.length > 3) args(3).toInt else 12541
         val datasetSize = if(args.length > 4) args(4).toInt else -1
-        val method = if(args.length > 5) args(5) else ""
+        val method = if(args.length > 5) args(5) else "antihub"
 
         try{
             val fullPath = System.getProperty("user.dir")
@@ -1172,7 +1255,6 @@ object BigDataExperiment {
             val config = new SparkConf().setAppName("Scaled creditcard test")
             config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
-//            config.setMaster("local[*]")
 //            config.set("spark.executor.memory", "12g")
 //            config.set("spark.driver.maxResultSize", "1g")
 //            config.set("spark.default.parallelism", "48")
@@ -1252,12 +1334,7 @@ object BigDataExperiment {
 //            saveStatistics(refinedLine)
 
             val onStart = System.nanoTime()
-            val antihub = (method match {
-                case "byPartition" => new SameThingByPartition().detectAnomalies(instances, pivotsAmount, seed, k, euclidean, sc, new rknn_outlier_detection.small_data.detection.Antihub())
-                case "lightweightJoin" => Antihub.detectLightweightJoin(instances, pivotsAmount, seed, k, euclidean, sc)
-                case "bySet" => Antihub.detectBasicHashSet(instances, pivotsAmount, seed, k, euclidean, sc)
-                case "repartitioned" => Antihub.detectRepartitionedLightweightJoin(instances, pivotsAmount, seed, k, euclidean, sc)
-            }).cache()
+            val antihub = Antihub.detectRepartitionedLightweightJoin(instances, pivotsAmount, seed, k, euclidean, sc).persist
             antihub.count()
             val onFinish = System.nanoTime()
             val duration = (onFinish - onStart) / 1000000
@@ -1274,7 +1351,7 @@ object BigDataExperiment {
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
-                System.in.read()
+//                System.in.read()
             }
         }
     }
@@ -1402,13 +1479,33 @@ object BigDataExperiment {
         }
     }
 
+    class CustomSparkListener extends SparkListener {
+
+        var totalProcessingTime: Long = 0
+        var totalNetworkTime: Long = 0
+
+        override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
+            val metrics = taskEnd.taskMetrics
+            if (metrics != null) {
+                val processingTime = metrics.executorRunTime
+                val networkTime = metrics.shuffleReadMetrics.fetchWaitTime + metrics.shuffleWriteMetrics.writeTime / 1000000
+
+                totalProcessingTime += processingTime
+                totalNetworkTime += networkTime
+            }
+        }
+    }
+
     def byPartitionFullLengthExperiment(args: Array[String]): Unit = {
+        val datetime = java.time.LocalDateTime.now()
+        val dateString = s"${datetime.getYear}-${datetime.getMonthValue}-${datetime.getDayOfMonth}_${datetime.getHour}:${datetime.getMinute}"
         val nodes = if(args.length > 0) args(0).toInt else 1
-        val pivotsAmount = if(args.length > 1) args(1).toInt else 142
-        val k = if(args.length > 2) args(2).toInt else 10
-        val seed = if(args.length > 3) args(3).toInt else 12541
+        val pivotsAmount = if(args.length > 1) args(1).toInt else 95
+        val k = if(args.length > 2) args(2).toInt else 600
+        val seed = if(args.length > 3) args(3).toInt else 6745
         val datasetSize = if(args.length > 4) args(4).toInt else -1
         val detectionMethod = if(args.length > 5) args(5) else "antihub"
+        val pivotStrategy = if(args.length > 6) args(6) else "random"
         val distanceFunction = euclidean
 
         try{
@@ -1420,6 +1517,8 @@ object BigDataExperiment {
             val config = new SparkConf()
             config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
+            config.setMaster("local[*]")
+            config.set("spark.default.parallelism", "128")
 
             val spark = SparkSession.builder()
                 .config(config)
@@ -1430,7 +1529,7 @@ object BigDataExperiment {
 
             import spark.implicits._
 
-            val detectionCriteria: DetectionCriteria = detectionMethod match {
+            val detectionCriteria: rknn_outlier_detection.small_data.detection.DetectionStrategy = detectionMethod match {
                 case "antihub" => new detection.Antihub()
                 case "ranked" => new detection.RankedReverseCount(k, 0.7)
                 case "refined" => new detection.AntihubRefined(0.1, 0.3)
@@ -1446,15 +1545,39 @@ object BigDataExperiment {
             val instances = instancesAndClassification.map(_._1)
             val classifications = instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}
 
+//            val customListener = new CustomSparkListener
+//            spark.sparkContext.addSparkListener(customListener)
+
+            if(pivotStrategy != "random" && pivotStrategy != "fft" && pivotStrategy != "is"){
+                throw new Exception(s"Unknown pivot selection strategy: $pivotStrategy")
+            }
+
+            val onPivotStart = System.nanoTime()
+            val selectedPivots = pivotStrategy match {
+                case "random" => instances.takeSample(withReplacement = false, pivotsAmount, seed)
+                case "fft" =>
+                    val objectSet = sc.parallelize(instances.takeSample(withReplacement = false, seed=seed, num=6190), sc.defaultParallelism)
+                    new FarthestFirstTraversal(seed=seed).findPivots(objectSet, pivotsAmount, distanceFunction)
+                case "is" =>
+                    val sample = instances.takeSample(withReplacement=false, num=2500, seed=seed)
+                    val candidatePivots = sc.parallelize(sample.slice(0, 500))
+                    val objectPairs = sc.parallelize(sample.slice(500, 1500).zip(sample.slice(1500, 2500)))
+                    new IncrementalSelection().findPivots(candidatePivots, objectPairs, pivotsAmount, distanceFunction, sc)
+            }
+            val onPivotEnd = System.nanoTime()
+            val pivotDuration = (onPivotEnd - onPivotStart) / 1000000
+
             val onStart = System.nanoTime()
-            val outlierDegrees = new SameThingByPartition().detectAnomalies(instances, pivotsAmount, seed, k, distanceFunction, sc, detectionCriteria).persist()
+            val outlierDegrees = new SameThingByPartition().detectAnomaliesNoOneLeftBehind(instances, pivotsAmount, seed, k, distanceFunction, sc, detectionCriteria, selectedPivots).persist()
             outlierDegrees.count()
             val onFinish = System.nanoTime
+//            spark.sparkContext.removeSparkListener(customListener)
             val duration = (onFinish - onStart) / 1000000
             val predictionsAndLabels = classifications.join(outlierDegrees).map(tuple => (tuple._2._2, tuple._2._1.toDouble))
             val detectionMetrics = new BinaryClassificationMetrics(predictionsAndLabels)
 
-            val line = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$seed,$detectionMethod,${detectionMetrics.areaUnderROC()},${detectionMetrics.areaUnderPR()},0,0,$duration"
+            val line = s"$nodes,${if(datasetSize == -1) "full" else s"$datasetSize"},$k,$pivotsAmount,$seed,$detectionMethod,${detectionMetrics.areaUnderROC()},${detectionMetrics.areaUnderPR()},0,0,$duration,$dateString,$pivotStrategy,${sc.defaultParallelism},$pivotDuration"
+//            val line = s"$nodes,$k,$seed,${detectionMetrics.areaUnderROC()},${customListener.totalProcessingTime},${customListener.totalNetworkTime},$duration"
             saveStatistics(line)
 
             println(s"---------------Done executing-------------------")
@@ -1463,6 +1586,7 @@ object BigDataExperiment {
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
+                System.in.read()
             }
         }
     }
@@ -1541,6 +1665,7 @@ object BigDataExperiment {
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
+                System.in.wait()
             }
         }
     }

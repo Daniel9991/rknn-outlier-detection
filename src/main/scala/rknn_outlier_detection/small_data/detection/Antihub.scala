@@ -2,7 +2,7 @@ package rknn_outlier_detection.small_data.detection
 
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, RNeighbor}
 
-class Antihub extends DetectionCriteria{
+class Antihub extends DetectionStrategy{
     override def scoreInstances(reverseNeighbors: Array[(Int, Array[RNeighbor])]): Array[(Int, Double)] = {
         reverseNeighbors.map{
             case (id, rNeighbors) => (id, Antihub.normalizeReverseNeighborsCount(rNeighbors.length))
