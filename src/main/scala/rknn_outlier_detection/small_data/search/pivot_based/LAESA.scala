@@ -513,7 +513,7 @@
 //        }
 //    }
 //
-//    override def findKNeighbors(instances: Array[Instance], k: Int, distanceFunction: DistanceFunction): Array[Array[KNeighbor]] = {
+//    override def findKNeighbors(instances: Array[Instance], k: Int, distanceFunction: DistanceFunction): Array[(Int, Array[KNeighbor])] = {
 //        findAllKNeighbors(instances, k, custom = true, distanceFunction)
 //    }
 //}

@@ -37,18 +37,23 @@ object RunOldAlgorithm {
     def knnw_big_data_experiments(args: Array[String]): Unit = {
         val k = if(args.length > 0) args(0).toInt else 10
         val p = if(args.length > 1) args(1).toDouble else 0.1
-        val partitions = if(args.length > 2) args(2).toInt else 320
+        val partitions = if(args.length > 2) args(2).toInt else 150
 
         try{
             val fullPath = System.getProperty("user.dir")
 
-            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled.csv"
+//            val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled.csv"
+//            val datasetRelativePath = s"testingDatasets\\kdd99_unsupervised_scaled.csv"
+            val datasetRelativePath = s"testingDatasets\\webattacksScaledSlim.csv"
             val datasetPath = s"${fullPath}\\${datasetRelativePath}"
 
             val config = new SparkConf()
-            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+//            config.setMaster("local[*]")
+//            config.set("spark.executor.memory", "2g")
+//            config.set("spark.driver.memory", "12g")
+//            config.set("spark.driver.maxResultSize", "1g")
+//            config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
             config.registerKryoClasses(Array(classOf[Tupla], classOf[Clasificacion], classOf[TuplaFase1], classOf[TuplaFase2]))
-            config.setMaster("local[*]")
 
             val spark = SparkSession.builder()
                 .config(config)
@@ -63,14 +68,14 @@ object RunOldAlgorithm {
             val rawData = spark.read.textFile(datasetPath).map(row => row.split(","))
             val instancesAndClassification = rawData.rdd.zipWithIndex.map{case (line, index) => {
                 val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-                val classification = if (line.last == "1") "1.0" else "0.0"
+                val classification = if(line.last != "BENIGN") "1.0" else "0.0"
                 (Instance(index.toInt, attributes), classification)
             }}.persist()
 
             val instances = instancesAndClassification.map(_._1)
             val classifications = instancesAndClassification.map{case (instance, classification) => (instance.id, classification)}
 
-            val data = spark.createDataset(instances.repartition(partitions).map(instance => Tupla(instance.id.toString, instance.data))).persist()
+            val data = spark.createDataset(instances.map(instance => Tupla(instance.id.toString, instance.data))).repartition(partitions).persist()
             val onStart = System.nanoTime()
             val outlierDegrees = new KNNW_BigData(k, p).train(data, spark).map(res => (res.ID.toInt, res.ia)).persist()
             outlierDegrees.count()
@@ -88,6 +93,8 @@ object RunOldAlgorithm {
             case e: Exception => {
                 println("-------------The execution didn't finish due to------------------")
                 println(e)
+                val error = s"\n\nERROR - $getFormattedLocalDateTime\n$e"
+                logError(error)
             }
         }
     }

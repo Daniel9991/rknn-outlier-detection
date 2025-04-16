@@ -3,7 +3,10 @@ package rknn_outlier_detection.big_data.search.pivot_based
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, SparkSession}
+import org.apache.spark.storage.StorageLevel
 import rknn_outlier_detection.DistanceFunction
+import rknn_outlier_detection.big_data.full_implementation.Antihub
+import rknn_outlier_detection.big_data.partitioners.PivotsPartitioner
 import rknn_outlier_detection.big_data.search.KNNSearchStrategy
 import rknn_outlier_detection.exceptions.{IncorrectKValueException, IncorrectPivotsAmountException, InsufficientInstancesException}
 import rknn_outlier_detection.shared.custom_objects.{Instance, KNeighbor, OutlierPivot}
@@ -23,6 +26,236 @@ class PkNN(
     _pivots: Array[Instance],
     m: Int
 ) extends Serializable{
+
+    def mypknn(instances: RDD[Instance], sample: Array[Instance], k: Int, distanceFunction: DistanceFunction, sc: SparkContext): RDD[(Int, Array[KNeighbor])] = {
+
+        val pivots = sc.broadcast(sample)
+
+        val pivotPartitioner = new PivotsPartitioner(sample.length, pivots.value.map(_.id))
+
+        val cellsUnpartitioned = instances.map(instance => {
+            val closestPivot = pivots.value
+                .map(pivot => (pivot, distanceFunction(pivot.data, instance.data)))
+                .reduce {(pair1, pair2) => if(pair1._2 <= pair2._2) pair1 else pair2 }
+
+            (closestPivot._1, instance)
+        }).persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+        val cells = cellsUnpartitioned.partitionBy(pivotPartitioner)
+
+
+        // RDD[(Pivot, (Instance, Array[KNeighbor|null]))]
+        val coreKNNs = cells.mapPartitions(iter => {
+            // All elements from the same partition should belong to the same pivot
+            val arr = iter.toArray
+            val elements = arr.map{case (pivot, instance) => instance}
+            val pivot = arr(0)._1
+            val allKNeighbors = elements.map(el => (pivot, (el, new ExhaustiveSmallData().findQueryKNeighbors(el, elements,k, distanceFunction))))
+
+            Iterator.from(allKNeighbors)
+        }).persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+        // RDD[(Pivot, Double)]
+        val coreDistances = coreKNNs.mapPartitions(iter => {
+            val arr = iter.toArray
+            val pivot = arr(0)._1
+            val kNeighbors = arr.map(t => t._2._2)
+            val max = kNeighbors.map(batch => if(batch.last == null) Double.PositiveInfinity else batch.map(neighbor => neighbor.distance).max).max
+            Iterator.from(Array((pivot, max)))
+        })
+
+        val collectedPivotAndCoreDistances = Map.from(coreDistances.collect)
+        val pivotAndCoreDistance = sc.broadcast(collectedPivotAndCoreDistances)
+
+        // RDD[(Pivot, Double)]
+        val supportDistances = coreKNNs.mapPartitions(iter => {
+            val arr = iter.toArray
+            val pivot = arr(0)._1
+            if(arr.exists{case (_, (_, kNeighbors)) => kNeighbors.last == null}) {
+                Iterator.from(Array((pivot, Double.PositiveInfinity)))
+            } else {
+                val distances = arr.map{case (pivot, (point, kNeighbors)) => distanceFunction(pivot.data, point.data) + kNeighbors.last.distance}
+                Iterator.from(Array((pivot, distances.max)))
+            }
+        }).persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+        val supportingPivots = supportDistances.cartesian(supportDistances)
+            .filter{case ((pivot, supportDist), (otherPivot, _)) => pivot.id != otherPivot.id && supportDist > (distanceFunction(pivot.data, otherPivot.data) / 2.toDouble)}
+            .map{case ((pivot, _), (otherPivot, _)) => (otherPivot, pivot)}
+
+        val pivotsAndSupportedRDD = supportingPivots.groupByKey().mapValues(_.toArray)
+        val pivotsAndSupported = sc.broadcast(Map.from(pivotsAndSupportedRDD.collect))
+
+        val supportedPivotToSupportPoint = cellsUnpartitioned.flatMap{case (pivot, point) => {
+            val supportedPivots = pivotsAndSupported.value(pivot)
+            supportedPivots.filter(supportedPivot => {
+                Math.abs(distanceFunction(supportedPivot.data, point.data) - distanceFunction(pivot.data, point.data)) / 2.toDouble < pivotAndCoreDistance.value(supportedPivot)
+            }).map(supportedPivot => (supportedPivot, (point, false)))
+        }}
+
+//        val cellsWithCoreAndSupported = cellsUnpartitioned.map(t => (t._1, (t._2, true))).union(supportedPivotToSupportPoint).partitionBy(pivotPartitioner)
+//        val supportingKNNs = cellsWithCoreAndSupported.mapPartitions(iter => {
+//            val arr = iter.toArray
+//            val points = arr.map(_._2)
+//            val core = points.filter(_._2).map(_._1)
+//            val support = points.filter(t => !t._2).map(_._1)
+//
+//            val supportKNNs = core.map(corePoint => (corePoint.id, new ExhaustiveSmallData().findQueryKNeighbors(corePoint, support, k, distanceFunction).filter(n => n != null)))
+//
+//            Iterator.from(supportKNNs)
+//        })
+
+        val cellsWithCoreAndSupported = coreKNNs
+            .map{case (pivot, (instance, neighbors)) => (pivot, (instance, true, if(neighbors.last != null) neighbors.last.distance else Double.PositiveInfinity))}
+            .union(supportedPivotToSupportPoint
+                .map{case (supportedPivot, (instance, isCore)) => (supportedPivot, (instance, isCore, null.asInstanceOf[Double]))}
+            ).partitionBy(pivotPartitioner)
+
+        val supportingKNNs = cellsWithCoreAndSupported.mapPartitions(iter => {
+            val arr = iter.toArray
+            val core = arr.filter(_._2._2).map(_._2)
+            val support = arr.filter(t => !t._2._2).map(_._2._1)
+
+            val supportKNNs = core.map(corePoint => (corePoint._1.id, new ExhaustiveSmallData().findQueryKNeighbors(corePoint._1, support, k, distanceFunction, maxDistance = corePoint._3, filteredResponse = true)))
+
+            Iterator.from(supportKNNs)
+        })
+
+        val slimCoreKNNs = coreKNNs.map{case (pivot, (instance, kNeighbors)) => (instance.id, kNeighbors)}
+        val finalKNNs = slimCoreKNNs
+            .join(supportingKNNs)
+            .map{case (id, (coreNeighbors, supportNeighbors)) => {
+                for(neighbor <- supportNeighbors){
+                    if(neighbor != null && (coreNeighbors.last == null || neighbor.distance < coreNeighbors.last.distance)){
+                        Utils.insertNeighborInArray(coreNeighbors, neighbor)
+                    }
+                }
+
+                (id, coreNeighbors)
+            }}
+
+        finalKNNs
+    }
+
+    def pknnAllTheWay(instances: RDD[Instance], sample: Array[Instance], k: Int, distanceFunction: DistanceFunction, detectionCriteria: String, sc: SparkContext): RDD[(Int, Double)] = {
+
+        val pivots = sc.broadcast(sample)
+
+
+
+        val cellsUnpartitioned = instances.map(instance => {
+            val closestPivot = pivots.value
+                .map(pivot => (pivot, distanceFunction(pivot.data, instance.data)))
+                .reduce {(pair1, pair2) => if(pair1._2 <= pair2._2) pair1 else pair2 }
+
+            (closestPivot._1, instance)
+        }).persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+        val countByKey = cellsUnpartitioned.countByKey()
+        val smallerPivots = sc.broadcast(countByKey.toArray.filter(_._2 <= k).map(_._1))
+
+        val cellToFosterPoints = cellsUnpartitioned
+            .filter{case (pivot, _) => smallerPivots.value.contains(pivot)}
+            .map{case (_, point) => {
+                val closestPivot = pivots.value.filter(pivot => !smallerPivots.value.contains(pivot))
+                    .map(pivot => (pivot, distanceFunction(pivot.data, point.data)))
+                    .reduce {(pair1, pair2) => if(pair1._2 <= pair2._2) pair1 else pair2 }
+
+                (closestPivot._1, point)
+            }}
+
+        val pivotPartitioner = new PivotsPartitioner(sample.length - smallerPivots.value.length, pivots.value.filter(pivot => !smallerPivots.value.contains(pivot)).map(_.id))
+
+        val cellsUnpartitionedFortified = cellsUnpartitioned.filter{case (pivot, point) => !smallerPivots.value.contains(pivot)}.union(cellToFosterPoints).persist(StorageLevel.MEMORY_AND_DISK_SER)
+        cellsUnpartitioned.unpersist()
+        val cells = cellsUnpartitionedFortified.partitionBy(pivotPartitioner)
+
+        // RDD[(Pivot, (Instance, Array[KNeighbor|null]))]
+        val coreKNNs = cells.mapPartitions(iter => {
+            // All elements from the same partition should belong to the same pivot
+            val arr = iter.toArray
+            val elements = arr.map{case (pivot, instance) => instance}
+            val pivot = arr(0)._1
+            val allKNeighbors = elements.map(el => (pivot, (el, new ExhaustiveSmallData().findQueryKNeighbors(el, elements,k, distanceFunction))))
+
+            Iterator.from(allKNeighbors)
+        }).persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+        // RDD[(Pivot, Double)]
+        val coreDistances = coreKNNs.mapPartitions(iter => {
+            val arr = iter.toArray
+            val pivot = arr(0)._1
+            val kNeighbors = arr.map(t => t._2._2)
+            val max = kNeighbors.map(batch => if(batch.last == null) Double.PositiveInfinity else batch.map(neighbor => neighbor.distance).max).max
+            Iterator.from(Array((pivot, max)))
+        })
+
+        val collectedPivotAndCoreDistances = Map.from(coreDistances.collect)
+        val pivotAndCoreDistance = sc.broadcast(collectedPivotAndCoreDistances)
+
+        // RDD[(Pivot, Double)]
+        val supportDistances = coreKNNs.mapPartitions(iter => {
+            val arr = iter.toArray
+            val pivot = arr(0)._1
+            if(arr.exists{case (_, (_, kNeighbors)) => kNeighbors.last == null}) {
+                Iterator.from(Array((pivot, Double.PositiveInfinity)))
+            } else {
+                val distances = arr.map{case (pivot, (point, kNeighbors)) => distanceFunction(pivot.data, point.data) + kNeighbors.last.distance}
+                Iterator.from(Array((pivot, distances.max)))
+            }
+        }).persist(StorageLevel.MEMORY_AND_DISK_SER)
+
+        val supportingPivots = supportDistances.cartesian(supportDistances)
+            .filter{case ((pivot, supportDist), (otherPivot, _)) => pivot.id != otherPivot.id && supportDist > (distanceFunction(pivot.data, otherPivot.data) / 2.toDouble)}
+            .map{case ((pivot, _), (otherPivot, _)) => (otherPivot, pivot)}
+
+        val pivotsAndSupportedRDD = supportingPivots.groupByKey().mapValues(_.toArray)
+        val pivotsAndSupported = sc.broadcast(Map.from(pivotsAndSupportedRDD.collect))
+
+        val supportedPivotToSupportPoint = cellsUnpartitionedFortified.flatMap{case (pivot, point) => {
+            val supportedPivots = pivotsAndSupported.value(pivot)
+            supportedPivots.filter(supportedPivot => {
+                Math.abs(distanceFunction(supportedPivot.data, point.data) - distanceFunction(pivot.data, point.data)) / 2.toDouble < pivotAndCoreDistance.value(supportedPivot)
+            }).map(supportedPivot => (supportedPivot, (point, false)))
+        }}
+
+        supportDistances.unpersist()
+
+//        val cellsWithCoreAndSupported = cellsUnpartitioned.map(t => (t._1, (t._2, true))).union(supportedPivotToSupportPoint).partitionBy(pivotPartitioner)
+        val cellsWithCoreAndSupported = coreKNNs
+            .map{case (pivot, (instance, neighbors)) => (pivot, (instance, true, if(neighbors.last != null) neighbors.last.distance else Double.PositiveInfinity))}
+            .union(supportedPivotToSupportPoint
+                .map{case (supportedPivot, (instance, isCore)) => (supportedPivot, (instance, isCore, null.asInstanceOf[Double]))}
+            ).partitionBy(pivotPartitioner)
+
+        val supportingKNNs = cellsWithCoreAndSupported.mapPartitions(iter => {
+            val arr = iter.toArray
+            val core = arr.filter(_._2._2).map(_._2)
+            val support = arr.filter(t => !t._2._2).map(_._2._1)
+
+            val supportKNNs = core.map(corePoint => (corePoint._1.id, new ExhaustiveSmallData().findQueryKNeighbors(corePoint._1, support, k, distanceFunction, maxDistance = corePoint._3, filteredResponse = true)))
+
+            Iterator.from(supportKNNs)
+        })
+
+        val slimCoreKNNs = coreKNNs.map{case (pivot, (instance, kNeighbors)) => (instance.id, kNeighbors)}
+        val outlierDegs = slimCoreKNNs
+            .join(supportingKNNs)
+            .flatMap{case (id, (coreNeighbors, supportNeighbors)) => {
+                for(neighbor <- supportNeighbors){
+                    if(neighbor != null && (coreNeighbors.last == null || neighbor.distance < coreNeighbors.last.distance)){
+                        Utils.insertNeighborInArray(coreNeighbors, neighbor)
+                    }
+                }
+
+                coreNeighbors.map(n => (n.id, 1))
+            }}
+            .union(instances.map(instance => (instance.id, 0)))
+            .reduceByKey(_+_)
+            .mapValues(count => if(count == 0) 1.0 else 1.0 / count.toDouble)
+
+        outlierDegs
+    }
 
     def findPivotsCoefficientOfVariation(cellsLengths: Array[Int]): Double = {
 

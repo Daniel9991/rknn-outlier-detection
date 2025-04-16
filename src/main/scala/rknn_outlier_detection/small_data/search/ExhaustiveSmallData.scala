@@ -6,7 +6,7 @@ import rknn_outlier_detection.shared.utils.Utils
 
 import scala.collection.mutable.ArrayBuffer
 
-class ExhaustiveSmallData {
+class ExhaustiveSmallData extends Serializable{
 
     def findKNeighbors(
         instances: Array[Instance],
@@ -23,7 +23,9 @@ class ExhaustiveSmallData {
         query: Instance,
         dataset: Array[Instance],
         k: Int,
-        distanceFunction: DistanceFunction
+        distanceFunction: DistanceFunction,
+        maxDistance: Double = Double.PositiveInfinity,
+        filteredResponse: Boolean = false,
     ): Array[KNeighbor] = {
 
         val kNeighbors = Array.fill[KNeighbor](k)(null)
@@ -32,13 +34,16 @@ class ExhaustiveSmallData {
             if (instance.id != query.id) {
                 val distance = distanceFunction(query.data, instance.data)
 
-                if (kNeighbors.contains(null) || kNeighbors.last.distance > distance) {
+                if (distance < maxDistance && (kNeighbors.contains(null) || kNeighbors.last.distance > distance)) {
                     Utils.addNewNeighbor(kNeighbors, new KNeighbor(instance.id, distance))
                 }
             }
         })
 
-        kNeighbors
+        if(filteredResponse)
+            kNeighbors.filter(n => n != null)
+        else
+            kNeighbors
     }
 
     def insertNeighbor(

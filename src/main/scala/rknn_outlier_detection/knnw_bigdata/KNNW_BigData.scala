@@ -27,9 +27,9 @@ class KNNW_BigData(val k: Int, val p: Double) extends Serializable{
      * @param spark es el SparkSession de la aplicación
      * @return Retorna un Dataset que contiene el identificador único de las tuplas y su índice de anomalía correspondiente
      */
-    def train(data: Dataset[Tupla], spark: SparkSession, ID: String = "ID"): Dataset[Resultado] = {
+    def train(ds: Dataset[Tupla], spark: SparkSession, ID: String = "ID"): Dataset[Resultado] = {
 
-        val cantTupla = data.count()
+        val cantTupla = ds.count()
         import spark.implicits._
 
         println("Parseando tuplas")
@@ -37,7 +37,6 @@ class KNNW_BigData(val k: Int, val p: Double) extends Serializable{
         println("                PARSEANDO TUPLAS")
         println("**********************************************")
 //        val ds = data.map { row => parseTupla(row, spark, ID) } -> Receive directly a Dataset[Tupla]
-        val ds = data
 
         println("Ejecutando Fase1")
 

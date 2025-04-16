@@ -13,7 +13,7 @@ object DistanceFunctions {
             sum += math.pow(from1 - from2, 2)
         }
 
-        math.sqrt(sum)
+        BigDecimal(math.sqrt(sum)).setScale(6, BigDecimal.RoundingMode.HALF_UP).toDouble
     }
 
     def manhattan(instance1: Array[Double], instance2: Array[Double]): Double = {

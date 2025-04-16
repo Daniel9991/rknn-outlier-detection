@@ -38,53 +38,6 @@ object BigDataExperiment {
 //        byPartitionExperiment(args)
         byPartitionFullLengthExperiment(args)
 //        smallDataExperiment(args)
-
-//        val fullPath = System.getProperty("user.dir")
-//
-//        val datasetRelativePath = s"testingDatasets\\creditcardMinMaxScaled.csv"
-//        val datasetPath = s"${fullPath}\\${datasetRelativePath}"
-//
-//        val config = new SparkConf().setAppName("Scaled creditcard test")
-//        config.setMaster("local[*]")
-//        config.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-//        config.registerKryoClasses(Array(classOf[KNeighbor], classOf[Instance], classOf[RNeighbor]))
-//
-//        val spark = SparkSession.builder()
-//            .config(config)
-//            .appName("Scaled creditcard test")
-//            .getOrCreate();
-//
-//        val sc = spark.sparkContext
-//
-//        import spark.implicits._
-//
-//        val rawData = spark.read.textFile(datasetPath).map(row => row.split(","))
-//        val instancesAndClassification = rawData.rdd.zipWithIndex.map{case (line, index) => {
-//            val attributes = line.slice(0, line.length - 1).map(_.toDouble)
-//            val classification = if (line.last == "1") "1.0" else "0.0"
-//            (Instance(index.toInt, attributes), classification)
-//        }}
-//
-//        val instances = instancesAndClassification.map(_._1).take(10)
-//
-//        val exhaustiveSmallData = new ExhaustiveSmallData()
-//        val kNeighbors = instances.map(instance => (instance.id, exhaustiveSmallData.findQueryKNeighbors(instance, instances, 3, euclidean)))
-//        val filteredKNeighbors = kNeighbors.map{case (id, neighbors) => (id, neighbors.filter(n => n != null))}
-//        val rNeighbors = filteredKNeighbors.flatMap{case (instanceId, kNeighbors) =>
-//            kNeighbors.zipWithIndex.map{case (neighbor, index) => (neighbor.id, new RNeighbor(instanceId, index))}
-//        }.groupMap{case (instanceId, _) => instanceId}{case (_, rNeighbor) => rNeighbor}.toArray
-//
-//        val instancesSet = HashSet.from(instances.map(_.id))
-//        val rNeighborsSet = HashSet.from(rNeighbors.map(_._1))
-//        val notFound = instancesSet.diff(rNeighborsSet)
-//        val notFoundRNeighbors = notFound.map(id => (id, Array.empty[RNeighbor]))
-//        val fullRNeighbors = rNeighbors.concat(notFoundRNeighbors)
-//
-//        val refinedRDD = new AntihubRefined(0.3, 0.1).antihubRefinedDetect(sc.parallelize(fullRNeighbors)).cache()
-//        val refined = new detection.AntihubRefined(0.1, 0.3).scoreInstances(fullRNeighbors)
-//
-//        val joinedScores = refinedRDD.join(sc.parallelize(refined)).collect()
-//        println(joinedScores.map{case (id, (scoreRDD, regularScore)) => s"$id: ($scoreRDD, $regularScore)"}.mkString("\n", "\n", "\n"))
     }
 
 //    def compareReverseNeighborsCountBetweenApproximateAndExactSearch(): Unit ={
@@ -1498,7 +1451,7 @@ object BigDataExperiment {
 
     def byPartitionFullLengthExperiment(args: Array[String]): Unit = {
         val datetime = java.time.LocalDateTime.now()
-        val dateString = s"${datetime.getYear}-${datetime.getMonthValue}-${datetime.getDayOfMonth}_${datetime.getHour}:${datetime.getMinute}"
+        val dateString = formatLocalDateTime(datetime)
         val nodes = if(args.length > 0) args(0).toInt else 1
         val pivotsAmount = if(args.length > 1) args(1).toInt else 95
         val k = if(args.length > 2) args(2).toInt else 600

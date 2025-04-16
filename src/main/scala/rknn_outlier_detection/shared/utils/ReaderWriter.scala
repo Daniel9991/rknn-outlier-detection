@@ -25,6 +25,21 @@ object ReaderWriter {
         if (hasHeader) data.toArray.slice(1, data.length) else data.toArray
     }
 
+    def readFile(filename: String): String = {
+
+        val data = new ArrayBuffer[String]
+
+        val bufferedSource = scala.io.Source.fromFile(filename)
+
+        for (line <- bufferedSource.getLines) {
+            data += line
+        }
+
+        bufferedSource.close
+
+        data.mkString("\n")
+    }
+
     def writeToFile(
                        filename: String,
                        data: String,

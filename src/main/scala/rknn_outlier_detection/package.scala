@@ -1,5 +1,6 @@
 import rknn_outlier_detection.shared.custom_objects.Instance
 import rknn_outlier_detection.shared.distance.DistanceFunctions
+import rknn_outlier_detection.shared.utils.ReaderWriter
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
@@ -44,4 +45,14 @@ package object rknn_outlier_detection {
 
         minimumClosestPivotsTailRec(instance, k, pivots, ArrayBuffer.empty[PivotWithCount])
     }
+
+    def logError(error: String): Unit = {
+        val errorFile = s"C:\\Users\\danny\\OneDrive\\Escritorio\\Proyectos\\scala\\rknn-outlier-detection\\results\\errors.txt"
+
+        val previousContent = ReaderWriter.readFile(errorFile)
+        ReaderWriter.writeToFile(errorFile, s"${previousContent}\n${error}")
+    }
+
+    def formatLocalDateTime(datetime: java.time.LocalDateTime): String = s"${datetime.getYear}-${datetime.getMonthValue}-${datetime.getDayOfMonth}_${datetime.getHour}:${datetime.getMinute}"
+    def getFormattedLocalDateTime: String = formatLocalDateTime(java.time.LocalDateTime.now())
 }
